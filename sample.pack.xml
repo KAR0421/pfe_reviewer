@@ -1,0 +1,339 @@
+<?xml version='1.0' encoding="UTF-8" ?>
+<HEAD>
+<PACKAGE>209052-IMPRESS-27471-MANDATORY_UPDATE_DOCUMENT_PROCESS_NEW</PACKAGE>
+<NAME>209052-IMPRESS-27471-MANDATORY_UPDATE_DOCUMENT_PROCESS_NEW</NAME>
+<BUILD_DATE>20260224</BUILD_DATE>
+<LEVEL>OPTIONAL</LEVEL>
+<KEYWORDS>PRODUCT</KEYWORDS>
+<RELEASE>7.4.1.2-beta1</RELEASE>
+<CREATOR>ghada.boughalmi</CREATOR>
+</HEAD>
+
+<BODY>
+<!--   Package created by Boughalmi -->
+<!--      creation date: 24/02/2026 13:47:49 -->
+<!--      creation version: null -->
+<!--      source environment: //nximpress-refprod-311qa.bams.corp:8009/SmartServer -->
+
+<!--MxRule 121840 v21 [Current version] -->
+<RESULT MODE="XML" ACTION="GETOBJECTS"  VERSION="2"  CHARSET="UTF8" >
+<SMARTRULE FIND="RULE_CODE='UPDATE_DOCUMENT_PROCESS'" USER="ghada.boughalmi" UPDATE_DATE="24/02/2026" UPDATE_TIME="13:47:06" LABEL='Update process on new contribution'>
+<T_SMARTRULE CODEFIELDS="RULE_CODE" >
+<R_SMARTRULE CODE=",[&quot;RULE_CODE&quot;,&quot;UPDATE_DOCUMENT_PROCESS&quot;,]"  LOCAL_ID="121840" >
+<ACTIVE >Y</ACTIVE>
+<CONDITION ><![CDATA[$,["RULE_CODE","UPDATE_DOCUMENT_PROCESS",]^CONDITION]]></CONDITION>
+<DESCRIPTION ></DESCRIPTION>
+<IMPACT ><![CDATA[
+// ADF - 13/02/2024  [index + 1] ==> [index] pour Timestamp
+// ADF - 16/02/2024  prise en compte différence O41 vs O42 dans le nom
+// ADF - 20/02/2024  Elimination de l'extension encore présente dans le nom du fichier
+
+contribManagement := getparam("impress.contrib.management"); //IMPRESS 9892
+contribution := obj1;
+validFlag := getListItemId("YES_NO","Y");
+inValidFlag := getListItemId("YES_NO","N");
+arrayProcess := array();
+levelSdg :=  obj1.IS_MGMT_COMPANY_LEVEL; //IMPRESS 9892
+contribPtfLevel := GET_PARAM_LIST("CONTRIBUTION_FUND"); //MPRESS-11831 
+existe := strsearch(contribPtfLevel, contribution.CONTRIBUTION_CODE); //IMPRESS-11831
+contribFundLevel := getListItemId("CONTRIBUTION_FUND", contribution.CONTRIBUTION_CODE); //IMPRESS-22752
+
+//BEGIN01-IMPRESS-9432 Add linked umbrella process to find references to a compartment contribution
+
+if (contribFundLevel = contribFundLevel and contribFundLevel = contribFundLevel) {
+    tmpCheck := 1;
+}
+
+// Dead code
+msginfo("Before return debug");
+return;
+msginfo("Never executed"); // dead code
+
+// Nested loop (loop in loop)
+foreach dbg1 in arrayProcess do {
+    foreach dbg2 in arrayProcess do {
+        tmpLoop := dbg1;
+    }
+}
+
+// ===== END DEBUG PATTERNS =====
+
+
+matchingProcess2 := "select  r.REPORT_PROC_ID, c.CONTRIBUTION_FILENAMEPATTERN, r.REPORT_DOCUMENT, r.LINKED_UMB_REP_PROC";
+matchingProcess2 := matchingProcess2 + " from REPORT_PROC r, REPORT_PROC_PARAMETER p1, REPORT_PROC_PARAMETER p2, REPORT_DOC d, REPORT_DOC_CONTRIBUTION c";
+matchingProcess2 := matchingProcess2 + " where r.REPORT_DOCUMENT=d.REPORT_DOC_ID and c.REPORT_DOC_ID=d.REPORT_DOC_ID and c.CONTRIBUTION_CODE='"+contribution.CONTRIBUTION_CODE+"' ";
+matchingProcess2 := matchingProcess2 + " and r.REPORT_PROC_ID=p1.REPORT_PROC_ID and r.REPORT_PROC_ID=p2.REPORT_PROC_ID ";
+matchingProcess2 := matchingProcess2 + " and p1.PARAMETER_NAME='pfCode' and p1.PARAMETER_VALUE='" + contribution.FUND_ID  +"'" ;
+
+// MHA - only update Valid processes 15/07/2020
+
+//DEBUT IMPRES-9892
+if (levelSdg = validFlag or existe != -1)
+matchingProcess2 := matchingProcess2 + " and p2.PARAMETER_NAME='repDate' and SUBSTR(p2.PARAMETER_VALUE,1,6) >= '"+effectivedate +"'"// IMPRESS-9892
+else
+matchingProcess2 := matchingProcess2 +  " and p2.PARAMETER_NAME='repDate' and p2.PARAMETER_VALUE like '"+effectivedate+ "%'";
+//FIN IMPRESS-9892
+matchingProcess2 := matchingProcess2 + "and r.VALID_FLAG = " + invalidflag;
+matchingProcess2 := getSqlData(matchingProcess2);
+
+contribReportRecordsReq := "select c.REPORT_DOC_CONTRIBUTION_ID, c.CONTRIBUTION_FILENAMEPATTERN, c.REPORT_DOC_ID, c.CONTRIBUTION_DIFFUSION";
+contribReportRecordsReq := contribReportRecordsReq + " from REPORT_DOC_CONTRIBUTION c";
+contribReportRecordsReq := contribReportRecordsReq + " where c.CONTRIBUTION_CODE='" + contribution.CONTRIBUTION_CODE + "'";
+contribReportRecords := getData(contribReportRecordsReq);
+//END01-IMPRESS-9432
+
+if(arraysize(matchingProcess) > 0) {           
+    docTypeOfficial := getListItemId("DOC_TYPES", "OFFICIAL");
+    contribDiffOfficial := getListItemId("CONTRIBUTION_DIFFUSION", "OFFICIAL");
+    contribDiffUnofficial := getListItemId("CONTRIBUTION_DIFFUSION", "UNOFFICIAL");
+    contribDiffBoth := getListItemId("CONTRIBUTION_DIFFUSION", "BOTH");
+    contribDiffCert := getListItemId("CONTRIBUTION_DIFFUSION", "CERT_OFFICIAL");
+    contribDiffSwiss := getListItemId("CONTRIBUTION_DIFFUSION", "SWISS");
+    swissId := getObjectIdByCode("COUNTRY", "CH", "ISO2");
+     //BEGIN02-IMPRESS-9432 Find linked umbrella process that is referencing a compartment contribution
+    mergedMatchingProcesses := array();
+    foreach matchingProc in matchingProcess do {
+          linkedUmbrellaProc := matchingProc[3];
+          arrayappend(matchingProc, "LOCAL");
+          arrayappend(mergedMatchingProcesses, matchingProc);
+          if(linkedUmbrellaProc > 0) {
+                matchingUmbrellaProcess := "select  r.REPORT_PROC_ID, c.CONTRIBUTION_FILENAMEPATTERN, r.REPORT_DOCUMENT";
+                matchingUmbrellaProcess := matchingUmbrellaProcess + " from REPORT_PROC r, REPORT_DOC d, REPORT_DOC_CONTRIBUTION c";
+                matchingUmbrellaProcess := matchingUmbrellaProcess + " where r.REPORT_DOCUMENT=d.REPORT_DOC_ID and c.REPORT_DOC_ID=d.REPORT_DOC_ID and c.CONTRIBUTION_CODE='"+contribution.CONTRIBUTION_CODE+"' ";
+                matchingUmbrellaProcess := matchingUmbrellaProcess + "and r.REPORT_PROC_ID= " + linkedUmbrellaProc;
+                matchingUmbrellaProcess := matchingUmbrellaProcess + "and r.VALID_FLAG = " + validFlag;
+                matchingUmbrellaProcess := matchingUmbrellaProcess + "and TRIM(c.CONTRIBUTION_FILENAMEPATTERN) like '${compCode}%'";
+                matchingUmbrellaProcess := getSqlData(matchingUmbrellaProcess);
+                foreach matchingUmbrellaProc in matchingUmbrellaProcess do {
+                     pattern := matchingUmbrellaProc[1];
+                     pattern := strreplace(pattern, "${compCode}", contribution.FUND_ID);
+                    arrayset(matchingUmbrellaProc, 1, pattern);
+                    arrayappend(matchingUmbrellaProc, "LINKED_UMBRELLA");
+                    arrayappend(mergedMatchingProcesses, matchingUmbrellaProc);
+                }
+          }
+    }
+    foreach matchingProc in mergedMatchingProcesses do {
+    //END02-IMPRESS-9432
+        contribCreated := 0;
+        contribFilename := strupper(contribution.FILE_NAME);
+        process := getObject("MxReportDocumentProcess", matchingProc[0]);
+        processType := process.REPORT_DOC_TYPE;
+        if (process.findRecord("PARAMETER_NAME", "jurisdiction")) {
+            juridictionProcess := process.get("PARAMETER_VALUE", process.getRecnum("REPORT_PROC_PARAMETER")); 
+        } else {
+            juridictionProcess := "";
+            msgerror("Missing parameter jurisdiction ");
+        }
+        juridictionProcess := getObjectIdByCode("COUNTRY", strupper(juridictionProcess), "ISO2");
+        processDocDefId := matchingProc[2];
+        ptfId := getObjectIdByCode("PORTFOLIO", contribution.FUND_ID,'INTERNAL');
+        fundType := "PORTFOLIO";
+        // no portfolio found, probably an umbrella
+        if (ptfId = 0) {
+            ptfId := getObjectIdByCode("UMBRELLA", contribution.FUND_ID,'INTERNAL');
+            fundType := "UMBRELLA";
+        }
+        reportDocId := process.REPORT_DOCUMENT;
+        repDate := contribution.REPORT_DATE;
+        diffusion := processType;
+        foreach record in contribReportRecords do {
+            contribDiffusion:=record[3];
+            diffOK := 0;
+            if(diffusion = docTypeOfficial) {
+                if(contribDiffusion = contribDiffOfficial or contribDiffusion = contribDiffBoth or contribDiffusion = contribDiffCert) {
+                    diffOK := 1;
+                }
+            } else {
+                if(contribDiffusion=contribDiffUnofficial or contribDiffusion=contribDiffBoth or contribDiffusion=contribDiffCert or (contribDiffusion = contribDiffSwiss and juridictionProcess = swissId)) {
+                    diffOK := 1;
+                }
+            }
+            contribReportDocDefId := record[2];
+            if (contribCreated != 1 and processDocDefId = contribReportDocDefId and diffOK = 1 and arrayfind(arrayProcess,process.REPORT_PROC_ID) = -1) {
+                pattern:= matchingProc[1];
+                if (strsearch(pattern, ".txt_") != -1) {
+                    //O41  
+                    pattern:=strreplace(pattern, ".txt_", "_txt_");
+                } else if (strsearch(pattern, ".pdf_") != -1) {
+                    pattern:=strreplace(pattern, ".pdf_", "_pdf_");
+                }
+                contribPatternTokenized := strtokenize(pattern, "[\.]{1}");
+                patternTokenized := strtokenize(contribPatternTokenized[0], "_");
+                expectedFileName := "";
+                first := 1;
+        
+               // ADF - 16/02/2024 
+//                if (strstart(contribFilename, "RAPPORT_O4_1_17")){        //IMPRESS-7487
+                if (strstart(contribFilename, "RAPPORT_O4")){       
+                  if (strstart(contribFilename, "RAPPORT_O4_1"))
+                    expectedFileName:="RAPPORT_O4_1_17";
+                  else
+                    expectedFileName:="RAPPORT_O4_2_18";
+            
+                  contribFilenameArray := strtokenize( contribFilename,  "_");
+            
+                  expectedFileNamePart := "";  // ADF - 20/02/2024 Init extension finale
+                                          
+                  for (index := 4;  index < arraysize(patternTokenized); index := index + 1){
+
+                        // ADF - 20/02/2024  Elimination de l'extension encore présente dans le nom du fichier 
+                        contribFilenameArrayTmp := strtokenize( contribFilenameArray[index] ,  "[\.]{1}");  
+                        if  ( arraysize(contribFilenameArrayTmp) > 1) {
+                          contribFilenameArray[index] := contribFilenameArrayTmp[0] ;
+                          expectedFileNamePart := "." + strupper(contribFilenameArrayTmp[1]) ;
+                        }
+              
+                        if( isNumeric(contribFilenameArray[index])=1){              
+                             if (strsearch(patternTokenized[index], "CodeCSSF") != -1 or strsearch(patternTokenized[index], "Date") != -1  ){
+                                 expectedFileName := expectedFileName + "_" + contribFilenameArray[index];
+                             } else if(strsearch(patternTokenized[index], "HeureDeGeneration") != -1 ) {
+                                 expectedFileName := expectedFileName + "_" + contribFilenameArray[index] + "_" + contribFilenameArray[index + 1];
+                             } else if (strsearch(patternTokenized[index], "Timestamp")) {
+                                 // ADF - 13/02/2024 OLD [index + 1] ==> [index]  
+                                 // expectedFileName := expectedFileName + "_" + contribFilenameArray[index + 1];
+                                 expectedFileName := expectedFileName + "_" + contribFilenameArray[index];   // ADF - 13/02/2024 NEW [index + 1] ==> [index]
+                            }
+                        }
+                  }
+                  expectedFileName := expectedFileName + expectedFileNamePart ;   // ADF - 20/02/2024 nom final en majuscule
+
+                }  else {
+                    foreach  patternToken in patternTokenized do {
+                        if (strstart(patternToken, "${")) {
+                            notInPattern:=3;
+                            if(endswith(patternToken, "?")) {
+                                    notInPattern := notInPattern + 1;
+                            }
+                            parameterName := substr(patternToken,  2, (strlen(patternToken) - notInPattern));
+                            parameterValue := "";
+                            if (process.findRecord("PARAMETER_NAME", parameterName)) {
+                                parameterValue := process.get("PARAMETER_VALUE", process.getRecnum("REPORT_PROC_PARAMETER")); 
+                                if (parameterName = "repDate") {
+                                      //NEW IMPRESS-9892
+                              if(contribManagement = "Y") 
+                                             {
+                              reportingDatecontribDoc:=substr(contribution.REPORT_DATE , 0, 6);  //IMPRESS-22750
+                              //reportingDate:=substr(parameterValue , 0, 6);  //IMPRESS-22750
+                              if ((contribution.REPORT_DATE <= parameterValue) and (levelSdg = validFlag or contribFundLevel != ''))//IMPRESS-22752
+                                                   parameterValue := contribution.REPORT_DATE;
+                              else if (contribFundLevel = '' and reportingDatecontribDoc = substr(parameterValue , 0, 6) and levelSdg = inValidFlag)     
+                                   parameterValue := substr(parameterValue , 0, 6);              
+                                             }                                                           
+                              else
+                              {
+                              parameterValue := substr(parameterValue,0,6); 
+                                      }
+                                }                          
+                            }
+                            if (parameterValue = "") {
+                                expectedFileNamePart := "(.*)";
+                            } else {
+                                if (notInPattern > 3) {
+                                    expectedFileNamePart := "(.*)";
+                                } else  {
+                                    if (parameterName = "pfCode") {
+                                        pfCode := parameterValue;
+                                    }
+                                    expectedFileNamePart := parameterValue;
+                                }  
+                            }
+                        } else {
+                        return;
+                            expectedFileNamePart := patternToken;
+                        }
+                        return;
+                        if (first != 1) {
+                            if ((expectedFileNamePart != "(.*)") and (expectedFileName != "(.*)")) {
+                                if (expectedFileNamePart = "txt" or expectedFileNamePart = "pdf")  {     
+                                    //O41
+                                    expectedFileNamePart := strcat(".",  expectedFileNamePart);
+                                } else {
+                                    expectedFileNamePart := strcat("_",  expectedFileNamePart);
+                                }
+                            }
+                        } else {
+                            first := 0;
+                        }
+                        expectedFileName := strcat(expectedFileName, expectedFileNamePart);
+                    }    
+                }                   
+                expectedFileNamePattern := strupper(expectedFileName);
+                  //create valued pattern and try to match
+                if (checkPattern(expectedFileNamePattern, contribFilename)=1) {
+                        process.create("REPORT_PROC_CONTRIBUTION"); 
+                        process.CONTRIBUTION := record[0];
+                        return;
+                        process.CONTRIB_DOCUMENT := contribution;
+                        process.CONTRIBUTION_RECEIVED_DATE := contribution.RECEIPT_DATETIME;
+                        saveObjectsImmediately(process);
+                        msginfo("Process : " +  process + " has been updated");
+                        arrayappend(arrayProcess, process.REPORT_PROC_ID);
+                }
+            }
+        }
+    }
+UPDATE_REPORT_PROC_C(process) //IMPRESS-10385
+}
+// EOF]]></IMPACT>
+<PRIVACY_LEVEL >SMARTCO</PRIVACY_LEVEL>
+<REEXECUTED_IN_BETWEEN_VERSIONS ></REEXECUTED_IN_BETWEEN_VERSIONS>
+<RULE_CATEGORY >IMPRESS</RULE_CATEGORY>
+<RULE_CODE ><![CDATA[UPDATE_DOCUMENT_PROCESS]]></RULE_CODE>
+<RULE_GROUP >ADM</RULE_GROUP>
+<RULE_STATUS >TO_COMPLETE</RULE_STATUS>
+<RULE_TYPE >MONO</RULE_TYPE>
+<USER_COMMENT ><![CDATA[Updating existing Document Process when receving a new contribution (look for matching process for every received contribution)]]></USER_COMMENT>
+</R_SMARTRULE>
+</T_SMARTRULE>
+<T_SMARTRULE_NAME CODEFIELDS="NAME_LANGUAGE" >
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;0&quot;,]"  LOCAL_ID="124025" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Update process on new contribution]]></NAME>
+<NAME_LANGUAGE >0</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;1&quot;,]"  LOCAL_ID="124026" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Update process on new contribution]]></NAME>
+<NAME_LANGUAGE >1</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+</T_SMARTRULE_NAME>
+<T_SMARTRULE_TRIGGER CODEFIELDS="TRIGGER_TYPE^TRIGGER_OBJECT" >
+<R_SMARTRULE_TRIGGER CODE=",[&quot;TRIGGER_TYPE&quot;,&quot;13&quot;,][&quot;TRIGGER_OBJECT&quot;,&quot;null&quot;,]"  LOCAL_ID="127134" >
+<ICON ></ICON>
+<PROCESS_LOCATION ></PROCESS_LOCATION>
+<SHORTCUT ></SHORTCUT>
+<TRIGGER_OBJECT ></TRIGGER_OBJECT>
+<TRIGGER_PRIORITY ></TRIGGER_PRIORITY>
+<TRIGGER_TYPE >13</TRIGGER_TYPE>
+</R_SMARTRULE_TRIGGER>
+</T_SMARTRULE_TRIGGER>
+<T_SMARTRULE_WFLINK>
+</T_SMARTRULE_WFLINK>
+
+<RF CLASS="Condition" CODE="$,[&quot;RULE_CODE&quot;,&quot;UPDATE_DOCUMENT_PROCESS&quot;,]^CONDITION" VERSION=0>
+<RF CLASS="classlist">
+<RF CLASS="lib.system.objects.Condition$ClassDesc">
+<tablename>CONTRIBDOC</tablename>
+<classlabel>MxContribDocument</classlabel>
+</RF>
+</RF>
+<RF CLASS="criteria">
+<RF CLASS="lib.system.objects.Condition$Criterion">
+<OPENPARANTH>1</OPENPARANTH>
+<fieldname>CONTRIBUTION_STATUS</fieldname>
+<CLOSEPARANTH>1</CLOSEPARANTH>
+<USEROPTION>1</USEROPTION>
+<fieldlabel><![CDATA[CONTRIBUTION_STATUS]]></fieldlabel>
+<RF CLASS="value">
+<lib.system.packaging.stringpack.FieldValue><![CDATA[ACTIVE]]></lib.system.packaging.stringpack.FieldValue>
+</RF>
+</RF>
+</RF>
+</RF>
+</SMARTRULE>
+</RESULT>
+
+</BODY>

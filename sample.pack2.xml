@@ -1,0 +1,350 @@
+<?xml version='1.0' encoding="UTF-8" ?>
+<HEAD>
+<PACKAGE>EXPORT_OBJECT-19/04/2026_19:06:43</PACKAGE>
+<NAME>Export object-19/04/2026 19:06:43</NAME>
+<BUILD_DATE>20260419</BUILD_DATE>
+<LEVEL>OPTIONAL</LEVEL>
+<RELEASE>7.4.1.3</RELEASE>
+<CREATOR>kalthoum.arfaoui</CREATOR>
+</HEAD>
+
+<BODY>
+<!--   Package created by Kalthoum Arfaoui -->
+<!--      creation date: 19/04/2026 19:07:05 -->
+<!--      creation version: null -->
+<!--      source environment: //refprod-3-2-0-dev-legal.bams.corp:8009/SmartServer -->
+
+<!--MxRule 122014 v10 -->
+<RESULT MODE="XML" ACTION="GETOBJECTS"  VERSION="2"  CHARSET="UTF8" >
+<SMARTRULE FIND="RULE_CODE='COMPUTE_TEMPLATE_ORDER'" USER="packageinstaller" UPDATE_DATE="10/02/2026" UPDATE_TIME="16:25:27" LABEL='Compute template order'>
+<T_SMARTRULE CODEFIELDS="RULE_CODE" >
+<R_SMARTRULE CODE=",[&quot;RULE_CODE&quot;,&quot;COMPUTE_TEMPLATE_ORDER&quot;,]"  LOCAL_ID="122014" >
+<ACTIVE >Y</ACTIVE>
+<CONDITION ></CONDITION>
+<DESCRIPTION ></DESCRIPTION>
+<IMPACT ><![CDATA[processList:=getObjects("MxReportDocumentProcess","IDENTIFIER='"+ arg1 + "'");
+process:=processList[0];
+processId:=process.REPORT_PROC_ID;
+reportDataId:=process.REPORT_DATA;
+reportData:=getObject("MxReportData",reportDataId);
+reportDefId := '';
+reportDoc:=process.REPORT_DOCUMENT;
+listToDelete:=array();
+listAuditDelete:=array();
+listNotesDelete:=array();
+//query:="SELECT d.CODE FROM REPORT_DEF d, REPORT_DOC r where r.REPORT_DOC_ID=" +reportDoc + " and r.REPORT=d.REPORT_DEF_ID";
+//reportDocCodeList:=getSqlData(query);
+//reportDocCodeItem:=reportDocCodeList[0];
+//repDataCode:=reportDocCodeItem[0];
+templateOrderCode:="TEMPLATE_ORDER_DEF";
+pfCode:=process.PARAMETER_VALUE[PARAMETER_NAME='pfCode'];
+repDate:=process.PARAMETER_VALUE[PARAMETER_NAME='repDate'];
+repLang:=process.PARAMETER_VALUE[PARAMETER_NAME='repLang'];
+jurisdiction:=process.PARAMETER_VALUE[PARAMETER_NAME='jurisdiction'];
+jurisdictionId := getobjectidbycode('COUNTRY',strupper(jurisdiction),'ISO2');
+varLang:=strlower(repLang);
+idLang:=getListItemId("LANGUAGE",varLang,"FREE_4");
+repLang:=getListItemCode("LANGUAGE",idLang,0);
+
+args := array();
+arrayappend(args,templateOrderCode);                                  //code du rapport
+
+effectDate:="";
+if (not(isNull(reportData))) {
+  reportDefId := reportData.DEF;
+  // check if we really need the effective date for a template order, by default GET_REPORT_ORDER will use 31/12/2999
+  effectDate:=reportData.P_VALUE[P_NAME='effectDate'];
+  foreach reportData.REPORTDATA_PARAM do {
+    p_name:=reportData.P_NAME;
+    if(p_name = 'repLang')
+       p_value:=repLang;
+    else if (p_name = 'jurisdiction')
+       p_value:=jurisdiction; 
+    else
+      p_value:=reportData.P_VALUE;
+    if (p_name != 'repOrder' and p_name != 'processId' and p_name != 'jurisdictionId')
+    {
+      argStr:=p_name + "=" + p_value;
+      arrayappend(args,argStr);
+      putincache(p_name,p_value,'TASK');
+    }
+  }
+}
+arrayappend(args,'processId=' + processId);
+putincache('processId',processId,'TASK');
+
+if (reportDoc != '')
+{
+  arrayappend(args,'reportDoc=' + reportDoc);
+  putincache('reportDoc',reportDoc,'TASK');
+  
+  // KAR 08/2024 IMPRESS-19745 - Ajout de reportDocCode
+  req := "select code from report_doc where report_doc_id = " + reportDoc
+  res := getSqlData(req)
+  res := res[0]
+  reportDocCode := res[0]
+  if (reportDocCode != '')
+  {
+    arrayappend(args, 'reportDocCode=' + reportDocCode);
+    putincache('reportDocCode', reportDocCode, 'TASK');
+  }
+  
+}
+
+if (jurisdictionId != '')
+{
+  arrayappend(args,'jurisdictionId=' + jurisdictionId);
+  putincache('jurisdictionId',jurisdictionId,'TASK');
+}
+
+if (reportDefId != '')
+{
+  req := "select D.FREQUENCY from REPORT_DEF D where D.REPORT_DEF_ID = "+ reportDefId;
+  res := getdata(req);
+  res := res[0];
+  reportFrequenceId := res[0];
+  if (reportFrequenceId != '')
+  {
+    arrayappend(args,'reportFrequenceId=' + reportFrequenceId);
+    putincache('reportFrequenceId',reportFrequenceId,'TASK');
+  }
+}
+//effectDate := template_order_data.PARAMETER_VALUE[PARAMETER_NAME='effectDate'];
+
+
+//- Code du document du rapport
+//- Code du portefeuille / code de l'umbrella
+//- Date effective (dd/mm/yyyy)
+repOrder := GET_REPORT_ORDER_V2(reportDoc,pfCode,effectDate);
+
+param := "impress.purge.TO";
+purgeTO := getparam(param);
+  
+if (repOrder != '')
+{
+  putincache('repOrder',repOrder,'TASK');
+  arrayappend(args,'repOrder='+repOrder) ;
+  //purge TO
+  if (purgeTO ='Y')
+  {
+    //recup id template order def
+    req1:="select REPORT_DEF_ID from REPORT_DEF where code='TEMPLATE_ORDER_DEF'"
+    res:=getsqldata(req1);
+    templateorderID:=res[0];
+    
+    req2:="select r2.code from rep_order r1 ,report_def r2 where  r1.code = '"+repOrder+"'"
+    req2:= req2 + "and r1.report_doc = "+reportDoc+" and r2.report_def_id = r1.report_def" 
+    res1:=getsqldata(req2);
+    codeRepDoc:=res1[0];
+    
+    //MHE 16/05/25 ajout recuperation class associe au reportDoc (rapport derriere le TO) pour acces REPORTDATA_REFERENCE
+    req3:="select rd.SCOPE_CLASS from report_doc rd  where  rd.report_doc_id = '"+reportDoc+"'"
+    res2:=getsqldata(req3);
+    repScopeClass:=res2[0];
+    reportingDate := getDate(repDate, "yyyyMMdd");  
+    repScopeClassObj := getObject("MxClassDef",repScopeClass[0])
+    repScopeClassName := repScopeClassObj.CLASS_NAME
+    req2comp := " and r.REPORTDATA_ID=rr.REPORTDATA_ID and rr.REPORTING_DATE = '" + fmtDate(reportingDate) + "' "
+    if (repScopeClassName = 'MxUmbrella')
+    {
+      umbrellaId := getObjectIdByCode("UMBRELLA",pfCode,"INTERNAL");
+      req2comp := req2comp + "and rr.UMBRELLA_ID = " + umbrellaId + " "
+    }
+    else
+    {
+      portfolioId := getObjectIdByCode("PORTFOLIO", pfCode,"INTERNAL");
+      req2comp := req2comp + " and rr.PORTFOLIO_ID = " + portfolioId + " " 
+    }
+ 
+    reqData := "select r.REPORTDATA_ID from REPORTDATA r, REPORTDATA_PARAM r2, REPORTDATA_PARAM r3, REPORTDATA_PARAM r5, REPORTDATA_REFERENCE rr "
+    reqData := reqData + " where r.DEF=" + templateorderID[0]
+    reqData := reqData +" and r.REPORTDATA_ID=r2.REPORTDATA_ID and r2.P_NAME='jurisdictionId' and r2.P_VALUE='" +jurisdictionId+"'"; 
+    reqData := reqData +" and r.REPORTDATA_ID=r3.REPORTDATA_ID and r3.P_NAME='repLang' and r3.P_VALUE='" +repLang+"'"; 
+    reqData := reqData +" and r.REPORTDATA_ID=r5.REPORTDATA_ID and r5.P_NAME='repCode' and r5.P_VALUE='" +codeRepDoc[0]+"'";
+    reqData := reqData + req2comp
+    
+    reqDataRes:=getSqlData(reqData);
+    
+    if(arraysize(reqDataRes)>0)
+    {  
+      foreach to in reqDataRes do
+      {
+        toId:=to[0];
+        if (toId!='')
+        {
+          arrayappend(listToDelete,toId);
+        }
+       
+        reqaudit := "select reportaudit_id from reportaudit  where reportdata = "+toId;
+        reqauditRes:=getSqlData(reqaudit);
+        
+        if(arraysize(reqauditRes)>0)
+        {  
+          foreach audit in reqauditRes do
+          {
+            auditId:=audit[0];
+            if (auditId!='')
+            {
+              arrayappend(listAuditDelete,auditId);
+            }
+          } 
+         } 
+        
+        reqnotes := "select REPORTDATANOTES_id  from REPORTDATANOTES where reportdata = "+toId;
+        reqnotesRes:=getSqlData(reqnotes);
+        
+        if(arraysize(reqnotesRes)>0)
+        {  
+          foreach notes in reqnotesRes do
+          {
+            notesId:=notes[0];
+            if (notesId!='')
+            {
+              arrayappend(listNotesDelete,notesId);
+            }
+          } 
+         }
+      }
+    } 
+    foreach a in listAuditDelete
+    {
+      callService("PurgeService", array("MxReportAudit;REPORTAUDIT.PURGE_REPORT","BULKSIZE=1000","MAXBULK=100000","repId="+a));
+    } 
+    foreach n in listNotesDelete
+    {
+      callService("PurgeService", array("MxReportDataNotes;REPORTDATANOTES.PURGE_REPORT","BULKSIZE=1000","MAXBULK=100000","repId="+n));
+    }
+    foreach t in listToDelete
+    {
+      callService("PurgeService", array("MxReportData;REPORTDATA.PURGE_REPORT","BULKSIZE=1000","MAXBULK=100000","repId="+t));
+    }
+  }
+  // Calcul du Template Order final
+  temp := TEXT_OVERLOAD_COMPUTATION(repOrder, '', '', '', '', '', '', '', arg1); // docText, reportDataId, umbrellaId, portfolioId, reportDocId, reportFrequencyId, jurisdictionId, reportDate, processIdentifier
+}
+
+
+
+
+//Récupération de l'Id de la Société de Gestion
+managementCompanyType := getlistitemid('AGENT_ROLE','MANAGEMENT_COMPANY');
+req := "select linked_agent from portfolio_agent p, reportdata_reference r where (link_start_date is null or link_start_date <= reporting_date) and link_end_date >= reporting_date and link_type = "+managementCompanyType
+req := req + " and p.portfolio_id = r.portfolio_id and reportdata_id = "+reportData.REPORTDATA_ID;
+res := getsqldata(req);
+res := res[0]
+if (res[0] != "")
+{ 
+  mgtCompanyId := res[0];
+}
+else
+  mgtCompanyId := 0;
+putincache('mgtCompanyId',mgtCompanyId,'TASK');
+
+//Calcul du tableau
+res:=callService('reportdataservice',args);]]></IMPACT>
+<PRIVACY_LEVEL >DATAADMIN</PRIVACY_LEVEL>
+<REEXECUTED_IN_BETWEEN_VERSIONS ></REEXECUTED_IN_BETWEEN_VERSIONS>
+<RULE_CATEGORY >IMPRESS</RULE_CATEGORY>
+<RULE_CODE ><![CDATA[COMPUTE_TEMPLATE_ORDER]]></RULE_CODE>
+<RULE_GROUP >IMPRESS_WF</RULE_GROUP>
+<RULE_STATUS >STANDARD</RULE_STATUS>
+<RULE_TYPE >AUTO</RULE_TYPE>
+<USER_COMMENT ><![CDATA[Ce script permet de calculer des paramètres supplémentaires avant de lancer le calcul du report.]]></USER_COMMENT>
+</R_SMARTRULE>
+</T_SMARTRULE>
+<T_SMARTRULE_NAME CODEFIELDS="NAME_LANGUAGE" >
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;0&quot;,]"  LOCAL_ID="124371" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Compute template order]]></NAME>
+<NAME_LANGUAGE >0</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;1&quot;,]"  LOCAL_ID="124372" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Calcul du template order]]></NAME>
+<NAME_LANGUAGE >1</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+</T_SMARTRULE_NAME>
+<T_SMARTRULE_TRIGGER CODEFIELDS="TRIGGER_TYPE^TRIGGER_OBJECT" >
+<R_SMARTRULE_TRIGGER CODE=",[&quot;TRIGGER_TYPE&quot;,&quot;60&quot;,][&quot;TRIGGER_OBJECT&quot;,&quot;COMPUTE_TEMPLATE_ORDER&quot;,]"  LOCAL_ID="127325" >
+<ICON ></ICON>
+<PROCESS_LOCATION ></PROCESS_LOCATION>
+<SHORTCUT ></SHORTCUT>
+<TRIGGER_OBJECT ><![CDATA[COMPUTE_TEMPLATE_ORDER]]></TRIGGER_OBJECT>
+<TRIGGER_PRIORITY ></TRIGGER_PRIORITY>
+<TRIGGER_TYPE >60</TRIGGER_TYPE>
+</R_SMARTRULE_TRIGGER>
+</T_SMARTRULE_TRIGGER>
+<T_SMARTRULE_WFLINK>
+</T_SMARTRULE_WFLINK>
+
+</SMARTRULE>
+</RESULT>
+
+<!--MxRule 121886 v20 -->
+<RESULT MODE="XML" ACTION="GETOBJECTS"  VERSION="2"  CHARSET="UTF8" >
+<SMARTRULE FIND="RULE_CODE='COMPUTE_START_WORKFLOW'" USER="guillaume.busi" UPDATE_DATE="04/12/2019" UPDATE_TIME="10:52:09" LABEL='Start Computation Workflow'>
+<T_SMARTRULE CODEFIELDS="RULE_CODE" >
+<R_SMARTRULE CODE=",[&quot;RULE_CODE&quot;,&quot;COMPUTE_START_WORKFLOW&quot;,]"  LOCAL_ID="121886" >
+<ACTIVE >Y</ACTIVE>
+<CONDITION ><![CDATA[$,["RULE_CODE","COMPUTE_START_WORKFLOW",]^CONDITION]]></CONDITION>
+<DESCRIPTION ></DESCRIPTION>
+<IMPACT ><![CDATA[processList:=getObjects("MxReportDocumentProcess","IDENTIFIER='"+ arg1 + "'");
+processObj:=processList[0];
+processId:=processObj.REPORT_PROC_ID;
+computationTopic:=getListItemId("WORKFLOW_TOPICS","COMPUTATION");
+criteria:="REPORT_PROC=" + processId + " and TOPIC=" + computationTopic;
+wfrList:=getObjects("MxWorkflowReport",criteria);
+startedStatus:=getListItemId("MESSAGE_STATUS","STARTED");
+foreach wfr in wfrList do{
+  foreach wfr.WORKFLOW_REPORT_SUBSTEP do {
+    wfr.SUBSTEP_STATUS:=startedStatus;
+  }
+  saveObjectsImmediately(wfr);
+}]]></IMPACT>
+<PRIVACY_LEVEL >DATAADMIN</PRIVACY_LEVEL>
+<REEXECUTED_IN_BETWEEN_VERSIONS ></REEXECUTED_IN_BETWEEN_VERSIONS>
+<RULE_CATEGORY >IMPRESS</RULE_CATEGORY>
+<RULE_CODE ><![CDATA[COMPUTE_START_WORKFLOW]]></RULE_CODE>
+<RULE_GROUP >IMPRESS_WF</RULE_GROUP>
+<RULE_STATUS >STANDARD</RULE_STATUS>
+<RULE_TYPE >MONO</RULE_TYPE>
+<USER_COMMENT ><![CDATA[This function set the computation step of a workflow to Started
+
+arg1: a MxWorkflowReport object]]></USER_COMMENT>
+</R_SMARTRULE>
+</T_SMARTRULE>
+<T_SMARTRULE_NAME CODEFIELDS="NAME_LANGUAGE" >
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;0&quot;,]"  LOCAL_ID="124117" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Start Computation Workflow]]></NAME>
+<NAME_LANGUAGE >0</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+<R_SMARTRULE_NAME CODE=",[&quot;NAME_LANGUAGE&quot;,&quot;1&quot;,]"  LOCAL_ID="124118" >
+<CONTEXT_ACCESS_NAME ></CONTEXT_ACCESS_NAME>
+<MENU_ACCESS_NAME ></MENU_ACCESS_NAME>
+<NAME ><![CDATA[Initialise le workflow de calcul]]></NAME>
+<NAME_LANGUAGE >1</NAME_LANGUAGE>
+</R_SMARTRULE_NAME>
+</T_SMARTRULE_NAME>
+<T_SMARTRULE_TRIGGER CODEFIELDS="TRIGGER_TYPE^TRIGGER_OBJECT" >
+<R_SMARTRULE_TRIGGER CODE=",[&quot;TRIGGER_TYPE&quot;,&quot;60&quot;,][&quot;TRIGGER_OBJECT&quot;,&quot;COMPUTE_START_WORKFLOW&quot;,]"  LOCAL_ID="127184" >
+<ICON ></ICON>
+<PROCESS_LOCATION ></PROCESS_LOCATION>
+<SHORTCUT ></SHORTCUT>
+<TRIGGER_OBJECT ><![CDATA[COMPUTE_START_WORKFLOW]]></TRIGGER_OBJECT>
+<TRIGGER_PRIORITY ></TRIGGER_PRIORITY>
+<TRIGGER_TYPE >60</TRIGGER_TYPE>
+</R_SMARTRULE_TRIGGER>
+</T_SMARTRULE_TRIGGER>
+<T_SMARTRULE_WFLINK>
+</T_SMARTRULE_WFLINK>
+
+<RF CLASS="Condition" CODE="$,[&quot;RULE_CODE&quot;,&quot;COMPUTE_START_WORKFLOW&quot;,]^CONDITION" VERSION=0>
+</RF>
+</SMARTRULE>
+</RESULT>
+
+</BODY>

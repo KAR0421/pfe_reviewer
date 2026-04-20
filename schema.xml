@@ -1,0 +1,1017 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with NeoXam DataHub 7.4.1.2-beta1 - 20260224_093032 - C:\Temp\New Text Document.txt : Simple NeoXam DataHub XSD model -->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<xs:element name="ROOT">
+		<xs:complexType>
+			<xs:sequence>
+				<xs:element name="SMARTRULE" minOccurs="0" maxOccurs="unbounded">
+					<xs:complexType>
+						<xs:sequence>
+							<xs:element name="ACTIVE" type="YES_NO" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="CONDITION" type="xs:string" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="DESCRIPTION" type="xs:string" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="IMPACT" type="xs:string" minOccurs="1" maxOccurs="1"/>
+							<xs:element name="PRIVACY_LEVEL" type="PRIVACY_LEVEL" minOccurs="1" maxOccurs="1"/>
+							<xs:element name="REEXECUTED_IN_BETWEEN_VERSIONS" type="YES_NO" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="RULE_CATEGORY" type="RULE_CATEGORY" minOccurs="1" maxOccurs="1"/>
+							<xs:element name="RULE_CODE" type="xs:string" minOccurs="1" maxOccurs="1"/>
+							<xs:element name="RULE_GROUP" type="RULE_GROUP" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="RULE_STATUS" type="RULE_STATUS" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="RULE_STATUS_AVAILABILITY" type="RULE_STATUS_AVAILABILITY" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="RULE_TYPE" type="RULE_TYPE" minOccurs="1" maxOccurs="1"/>
+							<xs:element name="USER_COMMENT" type="xs:string" minOccurs="0" maxOccurs="1"/>
+							<xs:element name="SMARTRULE_NAME" minOccurs="0" maxOccurs="unbounded">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="CONTEXT_ACCESS_NAME" type="xs:string" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="MENU_ACCESS_NAME" type="xs:string" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="NAME" type="xs:string" minOccurs="1" maxOccurs="1"/>
+										<xs:element name="NAME_LANGUAGE" type="LANGUAGE" minOccurs="1" maxOccurs="1"/>
+									</xs:all>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="SMARTRULE_TRIGGER" minOccurs="0" maxOccurs="unbounded">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="ICON" type="xs:string" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="PROCESS_LOCATION" type="xs:integer" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="SHORTCUT" type="xs:string" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="TRIGGER_OBJECT" type="xs:string" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="TRIGGER_PRIORITY" type="xs:integer" minOccurs="0" maxOccurs="1"/>
+										<xs:element name="TRIGGER_TYPE" type="RULE_TRIGGER_TYPE" minOccurs="1" maxOccurs="1"/>
+									</xs:all>
+								</xs:complexType>
+							</xs:element>
+							<xs:element name="SMARTRULE_WFLINK" minOccurs="0" maxOccurs="unbounded">
+								<xs:complexType>
+									<xs:all>
+										<xs:element name="LINKED_RULE" type="xs:string" minOccurs="1" maxOccurs="1"/>
+										<xs:element name="LINK_TYPE" type="xs:integer" minOccurs="1" maxOccurs="1"/>
+									</xs:all>
+								</xs:complexType>
+							</xs:element>
+						</xs:sequence>
+					</xs:complexType>
+				</xs:element>
+			</xs:sequence>
+		</xs:complexType>
+	</xs:element>
+	<xs:simpleType name="LANGUAGE">
+		<xs:annotation>
+			<xs:documentation>Language</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="0">
+				<xs:annotation>
+					<xs:documentation>English</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="1">
+				<xs:annotation>
+					<xs:documentation>French</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="2">
+				<xs:annotation>
+					<xs:documentation>Italian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="3">
+				<xs:annotation>
+					<xs:documentation>German</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="4">
+				<xs:annotation>
+					<xs:documentation>Native</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="5">
+				<xs:annotation>
+					<xs:documentation>Chinese</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="6">
+				<xs:annotation>
+					<xs:documentation>Portuguese</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="7">
+				<xs:annotation>
+					<xs:documentation>Spanish</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="8">
+				<xs:annotation>
+					<xs:documentation>Dutch</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="9">
+				<xs:annotation>
+					<xs:documentation>Czech</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="19">
+				<xs:annotation>
+					<xs:documentation>Lithuanian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="18">
+				<xs:annotation>
+					<xs:documentation>Italian-Swiss</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="17">
+				<xs:annotation>
+					<xs:documentation>Hungarian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="16">
+				<xs:annotation>
+					<xs:documentation>French-Swiss</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="15">
+				<xs:annotation>
+					<xs:documentation>Finnish</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="14">
+				<xs:annotation>
+					<xs:documentation>Estonian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="13">
+				<xs:annotation>
+					<xs:documentation>German-Swiss</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="12">
+				<xs:annotation>
+					<xs:documentation>English-Swiss</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="11">
+				<xs:annotation>
+					<xs:documentation>Modern Greek (1453)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="10">
+				<xs:annotation>
+					<xs:documentation>Danish</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="20">
+				<xs:annotation>
+					<xs:documentation>Latvian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="21">
+				<xs:annotation>
+					<xs:documentation>Norwegian</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="22">
+				<xs:annotation>
+					<xs:documentation>Slovak</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="23">
+				<xs:annotation>
+					<xs:documentation>Swedish</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="24">
+				<xs:annotation>
+					<xs:documentation>Icelandic</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_CATEGORY">
+		<xs:annotation>
+			<xs:documentation>Rule - Categories</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PORTFOLIO">
+				<xs:annotation>
+					<xs:documentation>Portfolio</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SECURITY">
+				<xs:annotation>
+					<xs:documentation>Security</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="OTHER">
+				<xs:annotation>
+					<xs:documentation>Other</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TRADE4">
+				<xs:annotation>
+					<xs:documentation>Temporary Trades Actions</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TRADE1">
+				<xs:annotation>
+					<xs:documentation>Transaction</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CONVERSION">
+				<xs:annotation>
+					<xs:documentation>Mapping</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="AGENT">
+				<xs:annotation>
+					<xs:documentation>Business Entities</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="BENCHMARK">
+				<xs:annotation>
+					<xs:documentation>Index &amp;amp; Benchmark</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TFM">
+				<xs:annotation>
+					<xs:documentation>Trade Flow Management</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SIMULATION">
+				<xs:annotation>
+					<xs:documentation>Simulation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PERFSCENARIO">
+				<xs:annotation>
+					<xs:documentation>Performance Scenario</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="USER">
+				<xs:annotation>
+					<xs:documentation>User</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FUND">
+				<xs:annotation>
+					<xs:documentation>Fund &amp;amp; Mandates</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SPECIFIC">
+				<xs:annotation>
+					<xs:documentation>Client Specific</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FEEDREJECT">
+				<xs:annotation>
+					<xs:documentation>Reject Feed</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PF_TOOLS">
+				<xs:annotation>
+					<xs:documentation>Portfolio Analysis Tools</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CORE">
+				<xs:annotation>
+					<xs:documentation>Core &amp;amp; Custom</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FINANCE">
+				<xs:annotation>
+					<xs:documentation>Finance</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="BULK">
+				<xs:annotation>
+					<xs:documentation>Bulk</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FEEDADMIN">
+				<xs:annotation>
+					<xs:documentation>Connectivity Admin</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="YIELDCURVE">
+				<xs:annotation>
+					<xs:documentation>Yield Curve</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DEMO">
+				<xs:annotation>
+					<xs:documentation>Demo</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="WS">
+				<xs:annotation>
+					<xs:documentation>Web Services</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PPOLICY">
+				<xs:annotation>
+					<xs:documentation>Pricing Policy</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REPORTING">
+				<xs:annotation>
+					<xs:documentation>Reporting</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="EVENT">
+				<xs:annotation>
+					<xs:documentation>Corporate Action</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ECONOMICS">
+				<xs:annotation>
+					<xs:documentation>Economics</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DATAREQUEST">
+				<xs:annotation>
+					<xs:documentation>Data Request</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="EFG">
+				<xs:annotation>
+					<xs:documentation>EFG</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="STRUCTPROD">
+				<xs:annotation>
+					<xs:documentation>Structured Product</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="BOOK">
+				<xs:annotation>
+					<xs:documentation>Book</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CLIENT_EVENT">
+				<xs:annotation>
+					<xs:documentation>Corporate Action Application</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CONSUMPTION">
+				<xs:annotation>
+					<xs:documentation>Data Cost Management</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="RECONCILIATION">
+				<xs:annotation>
+					<xs:documentation>Reconciliation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="RULE_MACRO">
+				<xs:annotation>
+					<xs:documentation>Macro recorder rules</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TNR">
+				<xs:annotation>
+					<xs:documentation>TNR</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="WATCH_DOG">
+				<xs:annotation>
+					<xs:documentation>Watchdog</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TESTING">
+				<xs:annotation>
+					<xs:documentation>Testing</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="EVENTINSTRUCTION">
+				<xs:annotation>
+					<xs:documentation>Corporate Action Instruction</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="MIGRATION">
+				<xs:annotation>
+					<xs:documentation>Migration tool</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ORDER">
+				<xs:annotation>
+					<xs:documentation>Order</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="VOLATILITY_SURFACE">
+				<xs:annotation>
+					<xs:documentation>Volatility Surface</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IMPRESS">
+				<xs:annotation>
+					<xs:documentation>Impress</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ACCOUNTING">
+				<xs:annotation>
+					<xs:documentation>Accounting</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IMPRESS_LIGHT">
+				<xs:annotation>
+					<xs:documentation>Impress light</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DATA_COST">
+				<xs:annotation>
+					<xs:documentation>Data Cost</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SOI">
+				<xs:annotation>
+					<xs:documentation>SOI</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DASHBOARD">
+				<xs:annotation>
+					<xs:documentation>Dashboard</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="AGGREGATION">
+				<xs:annotation>
+					<xs:documentation>Aggregation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DATADERIVATION">
+				<xs:annotation>
+					<xs:documentation>Data Derivation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ESG">
+				<xs:annotation>
+					<xs:documentation>ESG</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PBOR">
+				<xs:annotation>
+					<xs:documentation>PBOR</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DQC">
+				<xs:annotation>
+					<xs:documentation>Dqc</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PACKAGE_RELEASE">
+				<xs:annotation>
+					<xs:documentation>Package Release</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_STATUS">
+		<xs:annotation>
+			<xs:documentation>Rule - Statuses</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="EXAMPLE">
+				<xs:annotation>
+					<xs:documentation>Example</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SPECIFIC">
+				<xs:annotation>
+					<xs:documentation>Specific(Non nÃ©cessaire pour tous les clients)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TO_COMPLETE">
+				<xs:annotation>
+					<xs:documentation>To Complete</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="STANDARD">
+				<xs:annotation>
+					<xs:documentation>Standard</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TO_DELETE">
+				<xs:annotation>
+					<xs:documentation>Delete Flag</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="NOT_USED">
+				<xs:annotation>
+					<xs:documentation>Not Used</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DEMO">
+				<xs:annotation>
+					<xs:documentation>Demo Package(Ne peut pas Ãªtre utilisÃ© chez le client)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="INIT">
+				<xs:annotation>
+					<xs:documentation>Initialization(Fonction d&amp;apos;initialisation)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FORWHAT">
+				<xs:annotation>
+					<xs:documentation>To Do What?(A revoir : quel utilitÃ© ?)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PROD">
+				<xs:annotation>
+					<xs:documentation>Reference Database Production</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_TYPE">
+		<xs:annotation>
+			<xs:documentation>Rule - Types</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="MONO">
+				<xs:annotation>
+					<xs:documentation>Mono-Object Rule</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="MULTI">
+				<xs:annotation>
+					<xs:documentation>Multi-Object Rule</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="AUTO">
+				<xs:annotation>
+					<xs:documentation>Autonomous Rule</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="YES_NO">
+		<xs:annotation>
+			<xs:documentation>Yes/No</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="Y">
+				<xs:annotation>
+					<xs:documentation>Yes</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="N">
+				<xs:annotation>
+					<xs:documentation>No</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="U">
+				<xs:annotation>
+					<xs:documentation>Unknown</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_STATUS_AVAILABILITY">
+		<xs:annotation>
+			<xs:documentation>Rule - Information Statuses</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="COMP">
+				<xs:annotation>
+					<xs:documentation>Complete(Non nÃ©cessaire pour tous les clients)</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PEND">
+				<xs:annotation>
+					<xs:documentation>Pending</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="UNKNOWN">
+				<xs:annotation>
+					<xs:documentation>Unknown</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="OBS">
+				<xs:annotation>
+					<xs:documentation>Obsolete</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="PRIVACY_LEVEL">
+		<xs:annotation>
+			<xs:documentation>Privacy Levels</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="SMARTCO">
+				<xs:annotation>
+					<xs:documentation>NeoXam</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DATAADMIN">
+				<xs:annotation>
+					<xs:documentation>Data Admin</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="NEOXAMINTERNAL">
+				<xs:annotation>
+					<xs:documentation>Neoxam Internal</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="NXMATCHING">
+				<xs:annotation>
+					<xs:documentation>NeoXam - NxMatching</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TEST">
+				<xs:annotation>
+					<xs:documentation>Test</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="VANGUARD">
+				<xs:annotation>
+					<xs:documentation>Vanguard</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="Delete">
+				<xs:annotation>
+					<xs:documentation>Delete</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="Pending">
+				<xs:annotation>
+					<xs:documentation>Pending</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="NOMURA">
+				<xs:annotation>
+					<xs:documentation>Nomura</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PUBLIC">
+				<xs:annotation>
+					<xs:documentation>Public</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ROOTADMIN">
+				<xs:annotation>
+					<xs:documentation>Root Admin</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IMPRESS">
+				<xs:annotation>
+					<xs:documentation>Impress</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_GROUP">
+		<xs:annotation>
+			<xs:documentation>Rule visual group</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="WORKFLOW">
+				<xs:annotation>
+					<xs:documentation>Workflow</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="COMPUTE">
+				<xs:annotation>
+					<xs:documentation>Computation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ALLOCMODEL">
+				<xs:annotation>
+					<xs:documentation>Allocation Models</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ORDER">
+				<xs:annotation>
+					<xs:documentation>Trading</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ADM">
+				<xs:annotation>
+					<xs:documentation>Administration</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DISPLAY">
+				<xs:annotation>
+					<xs:documentation>Show</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REPORT">
+				<xs:annotation>
+					<xs:documentation>Reporting</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ADVANCED">
+				<xs:annotation>
+					<xs:documentation>Advanced</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="EXAMPLE">
+				<xs:annotation>
+					<xs:documentation>Example</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PROCESS">
+				<xs:annotation>
+					<xs:documentation>Internal process</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="MIGRATION">
+				<xs:annotation>
+					<xs:documentation>Migration</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REQUEST">
+				<xs:annotation>
+					<xs:documentation>Request</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CREATION">
+				<xs:annotation>
+					<xs:documentation>Creation Request</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TOOL">
+				<xs:annotation>
+					<xs:documentation>Tools</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="ADM_SECURITIES">
+				<xs:annotation>
+					<xs:documentation>Security Administrator</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="BACKUP">
+				<xs:annotation>
+					<xs:documentation>Backup</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FINCAD">
+				<xs:annotation>
+					<xs:documentation>FINCAD</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="INIT">
+				<xs:annotation>
+					<xs:documentation>Initialization</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="TO_DELETE">
+				<xs:annotation>
+					<xs:documentation>To Delete</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CONTROL">
+				<xs:annotation>
+					<xs:documentation>Control</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REQUEST_ON_THE_FLY">
+				<xs:annotation>
+					<xs:documentation>Request - On the Fly</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="GP3">
+				<xs:annotation>
+					<xs:documentation>GP3</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="NX_MATCHING">
+				<xs:annotation>
+					<xs:documentation>NX Matching</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FEED_PROC_MAP">
+				<xs:annotation>
+					<xs:documentation>Feed Proc Map</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DISP_VALIDATION">
+				<xs:annotation>
+					<xs:documentation>Display Validation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CODE_GENERATION">
+				<xs:annotation>
+					<xs:documentation>Code Generation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="GET_DATA">
+				<xs:annotation>
+					<xs:documentation>Data Retrieval</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="K3.1">
+				<xs:annotation>
+					<xs:documentation>K3.1</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IMPRESS_WF">
+				<xs:annotation>
+					<xs:documentation>Impress Workflow</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="IMPRESS_DQC_PRE">
+				<xs:annotation>
+					<xs:documentation>Impress DQC Pre-Calc</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CONTRIBS">
+				<xs:annotation>
+					<xs:documentation>Contributions</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="OVERLOAD">
+				<xs:annotation>
+					<xs:documentation>Overload</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="AUTOMATION">
+				<xs:annotation>
+					<xs:documentation>Automation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="HOBI">
+				<xs:annotation>
+					<xs:documentation>HOBI</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REPORT_ORDER">
+				<xs:annotation>
+					<xs:documentation>Report Order</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="REP_DOC">
+				<xs:annotation>
+					<xs:documentation>Report Document</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="SMARTCO">
+				<xs:annotation>
+					<xs:documentation>Smartco only</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="PROJECT">
+				<xs:annotation>
+					<xs:documentation>In project</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="FINAL">
+				<xs:annotation>
+					<xs:documentation>Final</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CONSOLIDATION_RULE">
+				<xs:annotation>
+					<xs:documentation>Consolidation rules</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DASHBOARD">
+				<xs:annotation>
+					<xs:documentation>Dashboard</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DATA_COST_SIMULATION">
+				<xs:annotation>
+					<xs:documentation>Data Cost Simulation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="RESOLUTION">
+				<xs:annotation>
+					<xs:documentation>Resolution</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="INVESTIGATION">
+				<xs:annotation>
+					<xs:documentation>Investigation</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="CREATE">
+				<xs:annotation>
+					<xs:documentation>Create</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="DELETE">
+				<xs:annotation>
+					<xs:documentation>Delete</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="UPDATE">
+				<xs:annotation>
+					<xs:documentation>Update</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="UTILS">
+				<xs:annotation>
+					<xs:documentation>Utils</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="RULE_TRIGGER_TYPE">
+		<xs:annotation>
+			<xs:documentation>Rule trigger type</xs:documentation>
+		</xs:annotation>
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="10">
+				<xs:annotation>
+					<xs:documentation>Object created</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="11">
+				<xs:annotation>
+					<xs:documentation>Object to be deleted</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="12">
+				<xs:annotation>
+					<xs:documentation>Object to be saved</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="20">
+				<xs:annotation>
+					<xs:documentation>Record created</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="21">
+				<xs:annotation>
+					<xs:documentation>Record to be deleted</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="30">
+				<xs:annotation>
+					<xs:documentation>Field to be indirectly changed</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="31">
+				<xs:annotation>
+					<xs:documentation>Field indirectly changed</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="50">
+				<xs:annotation>
+					<xs:documentation>User action</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="60">
+				<xs:annotation>
+					<xs:documentation>Internal process</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="51">
+				<xs:annotation>
+					<xs:documentation>Internal action</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="13">
+				<xs:annotation>
+					<xs:documentation>Object saved</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="14">
+				<xs:annotation>
+					<xs:documentation>Object verification</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="40">
+				<xs:annotation>
+					<xs:documentation>Field to be changed</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="41">
+				<xs:annotation>
+					<xs:documentation>Field changed</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="52">
+				<xs:annotation>
+					<xs:documentation>Reference user action</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="53">
+				<xs:annotation>
+					<xs:documentation>Hidden user action</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="70">
+				<xs:annotation>
+					<xs:documentation>Display customizer</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="15">
+				<xs:annotation>
+					<xs:documentation>Object pre verification</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="16">
+				<xs:annotation>
+					<xs:documentation>Post multi-source verification</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+			<xs:enumeration value="80">
+				<xs:annotation>
+					<xs:documentation>Change approved/ rejected</xs:documentation>
+				</xs:annotation>
+			</xs:enumeration>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>
