@@ -1,12 +1,26 @@
 ---
-name: "Reviewer conventions"
-description: "How to write, structure, and test review checks"
-applyTo: "reviewer.py,reviewer/**,tests/test_reviewer*.py,tests/test_checks*.py"
+name: "Reviewer conventions (LEGACY)"
+description: "How the flat regex-per-check reviewer_legacy.py is structured. Frozen — do not extend."
+applyTo: "reviewer_legacy.py,tests/test_reviewer_legacy*.py"
 ---
 
-# Reviewer conventions
+# Reviewer conventions — LEGACY
 
-## Shape of a check
+> ⚠️ **This file documents the flat regex-based implementation in
+> `reviewer_legacy.py`, which is frozen.** Do **not** add new checks or
+> features here. New work goes into the AST pipeline described in
+> [`ast-pipeline.instructions.md`](./ast-pipeline.instructions.md) and
+> [`../../docs/adr/0001-reviewer-architecture.md`](../../docs/adr/0001-reviewer-architecture.md).
+>
+> This file remains useful only for:
+> - Fixing an actively-blocking bug in an unmigrated legacy check.
+> - Reading the legacy check as a reference when implementing its AST
+>   counterpart (see the `/migrate-check` prompt).
+>
+> Once the Migration Status table in `docs/SPEC.md` is fully green and
+> `reviewer_legacy.py` is deleted, this file goes with it.
+
+## Shape of a legacy check
 Every check is a pure function:
 ```python
 def check_<topic>(script: str) -> list[str]:

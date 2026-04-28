@@ -30,22 +30,54 @@ Build a tool that:
 - Replacing the NeoXam editor or the product itself.
 
 ## 4. Architecture
+
+### Overview
+The reviewer has two pipelines running in parallel during the migration
+from the flat regex-based design to an AST-based design. See
+[`docs/adr/0001-reviewer-architecture.md`](adr/0001-reviewer-architecture.md)
+for the full decision record.
+
 ```
-┌────────────┐   ┌─────────┐   ┌────────────┐   ┌──────────┐   ┌────────┐
-│ .pack XML  │→ │ Parser  │→ │ BizRule[]  │→ │ Reviewer │→ │ Report │
-└────────────┘   └─────────┘   └────────────┘   └──────────┘   └────────┘
-                                                                    │
-                                                        later: ┌────┴─────┐
-                                                               │ Bitbucket│
-                                                               │ comments │
-                                                               └──────────┘
+                        ┌──────────────────────────────────┐
+                        │ XML .pack  →  BizRule[] loader   │
+                        └──────────────────────────────────┘
+                                        │
+                            ┌───────────┴───────────┐
+                            ▼                       ▼
+                    reviewer_legacy.py       reviewer/  (AST pipeline)
+                    (regex-per-check)        tokenizer → parser → AST
+                    FROZEN                   → engine visitor
+                                             → checks → Findings
+                            │                       │
+                            └───────────┬───────────┘
+                                        ▼
+                                 Report / diff
+                                        │
+                                        ▼
+                                 console (now)
+                                 JSON (M2)
+                                 Bitbucket PR (M4)
 ```
-Modules:
-- `parser.py`       — regex extraction of `<SMARTRULE>` blocks.
-- `xml_loader.py`   — alternative sanitize-then-parse loader.
-- `preprocessor.py` — line-level normalization (currently minimal).
-- `reviewer.py`     — `check_*` functions + orchestrator `review_bizrule`.
-- `main.py`         — CLI entry point.
+
+### Current modules
+- `parser.py`            — regex extraction of `<SMARTRULE>` blocks.
+- `xml_loader.py`        — alternative sanitize-then-parse XML loader.
+- `preprocessor.py`      — legacy helper; being retired.
+- `reviewer_legacy.py`   — flat regex-per-check implementation (frozen;
+                           awaiting full migration).
+- `reviewer/`            — new AST pipeline:
+    - `ast/{tokens,tokenizer,nodes,parser}.py`
+    - `engine/{finding,registry,visitor,runner}.py`
+    - `checks/<category>.py`
+    - `reporters/{console,json_reporter}.py`
+- `main.py`              — CLI entry; runs both pipelines and prints both
+                           reports during the migration.
+
+### Why two pipelines during migration
+Running legacy and new side-by-side lets each migrated check be validated
+on real pack fixtures by diffing findings. Once every check in the
+Migration Status table below is green and diffs are clean,
+`reviewer_legacy.py` and its parallel path in `main.py` are deleted.
 
 ## 5. Data model
 ```python
@@ -188,13 +220,52 @@ to the PR diff, and a batch-comment strategy (probably one summary comment
 + inline for `severity >= warning`).
 
 ## 8. Milestones
-1. **M1 — Foundation (current).** Parser + reviewer running against a pack
+1. **M1 — Foundation (current).** Legacy reviewer running against a pack
    from disk; 8 Must-Have checks; console output.
-2. **M2 — Harden.** Finding dataclass, rule IDs, JSON output, test suite,
-   remaining Must-Have checks (security, dependencies).
-3. **M3 — Should Have.** Trigger/scope checks, log quality, version diff.
-4. **M4 — Integration.** Bitbucket PR comments, CI hook.
-5. **M5 — Nice to Have.** Scoring, refactor hints, ML prototype.
+2. **M1b — AST pipeline.** Scaffold `reviewer/` package, tokenizer, parser,
+   engine, first migrated check. Parallel execution in `main.py`.
+3. **M2 — Harden.** Finish migrating every legacy check to AST; finalize
+   `Finding` / `Report`; JSON reporter; delete `reviewer_legacy.py`. Add
+   remaining Must-Have checks (security, dependencies, language
+   semantics SR055–SR058).
+4. **M3 — Should Have.** Trigger/scope checks, log quality, version diff.
+5. **M4 — Integration.** Bitbucket PR comments, CI hook.
+6. **M5 — Nice to Have.** Scoring, refactor hints, ML prototype.
+
+## 8b. Migration Status
+
+One row per check. "Status" progresses: **pending → in-progress → done**.
+When all Must-Have rows are **done** and diff-tests are green on every
+pack fixture, `reviewer_legacy.py` is deleted.
+
+| Rule ID | Legacy function               | AST check class       | Status  | Diff-test clean? |
+|---------|-------------------------------|-----------------------|---------|------------------|
+| SR001   | `check_naming_conventions`    | `GenericVarNameCheck` | pending | —                |
+| SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | pending | — |
+| SR020   | `check_static_conditions`     | `StaticConditionCheck` | pending | —               |
+| SR021   | `check_dead_code`             | `DeadCodeCheck`       | pending | —                |
+| SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | pending | —                |
+| SR031   | `check_nested_loops`          | `NestedLoopCheck`     | pending | —                |
+| SR032   | `check_repeated_queries`      | `RepeatedQueryCheck`  | pending | —                |
+| SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | pending | —         |
+| SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | pending | —         |
+
+New AST-native checks (no legacy counterpart, add directly in the new pipeline):
+
+| Rule ID | AST check class            | Status  |
+|---------|----------------------------|---------|
+| SR033   | `UnboundedLoopCheck`       | pending |
+| SR040   | `HardcodedSecretCheck`     | pending |
+| SR041   | `DivByZeroCheck`           | pending |
+| SR042   | `UnguardedFieldAccessCheck`| pending |
+| SR043   | `UnwrappedRiskyCallCheck`  | pending |
+| SR050   | `UnresolvedReferenceCheck` | pending |
+| SR055   | `ArrayAliasCheck`          | pending |
+| SR056   | `AssignOpMismatchCheck`    | pending |
+| SR057   | `CaseTypoVariableCheck`    | pending |
+| SR058   | `AutoCreateAssignCheck`    | pending |
+
+Update this table in the same PR that migrates (or adds) each check.
 
 ## 9. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
