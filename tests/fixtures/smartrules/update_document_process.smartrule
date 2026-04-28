@@ -1,0 +1,29 @@
+// ADF - 13/02/2024  [index + 1] ==> [index] pour Timestamp
+// ADF - 16/02/2024  prise en compte différence O41 vs O42 dans le nom
+// ADF - 20/02/2024  Elimination de l'extension encore présente dans le nom du fichier
+
+contribManagement := getparam("impress.contrib.management");
+contribution := obj1;
+validFlag := getListItemId("YES_NO","Y");
+inValidFlag := getListItemId("YES_NO","N");
+arrayProcess := array();
+levelSdg :=  obj1.IS_MGMT_COMPANY_LEVEL;
+contribPtfLevel := GET_PARAM_LIST("CONTRIBUTION_FUND");
+existe := strsearch(contribPtfLevel, contribution.CONTRIBUTION_CODE);
+contribFundLevel := getListItemId("CONTRIBUTION_FUND", contribution.CONTRIBUTION_CODE);
+
+if (contribFundLevel = contribFundLevel and contribFundLevel = contribFundLevel) {
+    tmpCheck := 1;
+}
+
+msginfo("Before return debug");
+return;
+
+foreach dbg1 in arrayProcess do {
+    foreach dbg2 in arrayProcess do {
+        tmpLoop := dbg1;
+    }
+}
+
+matchingProcess2 := "select  r.REPORT_PROC_ID from REPORT_PROC r";
+matchingProcess2 := getSqlData(matchingProcess2);

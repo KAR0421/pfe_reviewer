@@ -1,5 +1,5 @@
 from parser import extract_bizrules
-from reviewer import review_bizrule
+from reviewer_legacy import review_bizrule as review_legacy
 
 def main():
     xml_path = "sample.pack.xml"
@@ -18,7 +18,7 @@ def main():
         print("Script Preview:", br.script[:200], "...\n")  # show first 200 chars
 
         # Run the reviewer
-        report = review_bizrule(br)
+        report = review_legacy(br)
 
         if report["issues"]:
             print("Issues found:")

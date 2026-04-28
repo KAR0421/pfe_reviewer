@@ -1,0 +1,42 @@
+processList:=getObjects("MxReportDocumentProcess","IDENTIFIER='"+ arg1 + "'");
+process:=processList[0];
+processId:=process.REPORT_PROC_ID;
+reportDataId:=process.REPORT_DATA;
+reportData:=getObject("MxReportData",reportDataId);
+reportDefId := '';
+reportDoc:=process.REPORT_DOCUMENT;
+listToDelete:=array();
+templateOrderCode:="TEMPLATE_ORDER_DEF";
+pfCode:=process.PARAMETER_VALUE[PARAMETER_NAME='pfCode'];
+repDate:=process.PARAMETER_VALUE[PARAMETER_NAME='repDate'];
+repLang:=process.PARAMETER_VALUE[PARAMETER_NAME='repLang'];
+jurisdiction:=process.PARAMETER_VALUE[PARAMETER_NAME='jurisdiction'];
+jurisdictionId := getobjectidbycode('COUNTRY',strupper(jurisdiction),'ISO2');
+varLang:=strlower(repLang);
+idLang:=getListItemId("LANGUAGE",varLang,"FREE_4");
+repLang:=getListItemCode("LANGUAGE",idLang,0);
+
+args := array();
+arrayappend(args,templateOrderCode);
+
+effectDate:="";
+if (not(isNull(reportData))) {
+  reportDefId := reportData.DEF;
+  effectDate:=reportData.P_VALUE[P_NAME='effectDate'];
+  foreach reportData.REPORTDATA_PARAM do {
+    p_name:=reportData.P_NAME;
+    if(p_name = 'repLang')
+       p_value:=repLang;
+    else if (p_name = 'jurisdiction')
+       p_value:=jurisdiction;
+    else
+      p_value:=reportData.P_VALUE;
+    if (p_name != 'repOrder' and p_name != 'processId' and p_name != 'jurisdictionId')
+    {
+      argStr:=p_name + "=" + p_value;
+      arrayappend(args,argStr);
+      putincache(p_name,p_value,'TASK');
+    }
+  }
+}
+arrayappend(args,'processId=' + processId);
