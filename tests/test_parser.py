@@ -1,16 +1,24 @@
 """Tests for reviewer.ast.parser (Phase 2 minimum subset)."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from reviewer.ast.nodes import (
     AbortStmt,
+    ArrayIndex,
     AssignStmt,
     BinaryOp,
     Block,
     Call,
+    DoWhile,
     ExprStmt,
     FieldAccess,
+    ForCStyle,
+    ForCounter,
+    ForeachList,
+    ForeachTable,
     Identifier,
     IfStmt,
     NumberLit,
@@ -18,6 +26,9 @@ from reviewer.ast.nodes import (
     Script,
     SkipStmt,
     StringLit,
+    TableSelector,
+    TryStmt,
+    WhileStmt,
 )
 from reviewer.ast.parser import ParseError, Parser
 from reviewer.ast.tokenizer import tokenize
@@ -254,3 +265,171 @@ def test_real_snippet_phase2_subset() -> None:
     assert script.statements[4].line == 5
     assert isinstance(script.statements[5], ReturnStmt)
     assert script.statements[5].line == 8
+
+
+# ── Phase 3: foreach ─────────────────────────────────────────────
+
+
+def test_foreach_list_form() -> None:
+    script = parse("foreach item in items do { x := item; }")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForeachList)
+    assert stmt.var.name == "item"
+    assert isinstance(stmt.iterable, Identifier) and stmt.iterable.name == "items"
+    assert isinstance(stmt.body, Block)
+
+
+def test_foreach_table_form() -> None:
+    script = parse("foreach obj.TABLE do { x := 1; }")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForeachTable)
+    assert isinstance(stmt.target, FieldAccess)
+    assert stmt.target.field == "TABLE"
+    assert isinstance(stmt.body, Block)
+
+
+def test_foreach_single_statement_body() -> None:
+    script = parse("foreach x in xs do y := x;")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForeachList)
+    assert isinstance(stmt.body, AssignStmt)
+
+
+# ── Phase 3: for ─────────────────────────────────────────────────
+
+
+def test_for_counter_to() -> None:
+    script = parse("for i := 1 to 10 do { x := i; }")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForCounter)
+    assert stmt.var.name == "i"
+    assert stmt.direction == "to"
+    assert isinstance(stmt.start, NumberLit) and stmt.start.value == 1
+    assert isinstance(stmt.end, NumberLit) and stmt.end.value == 10
+
+
+def test_for_counter_downto() -> None:
+    script = parse("for i := 10 downto 1 do x := i;")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForCounter)
+    assert stmt.direction == "downto"
+
+
+def test_for_c_style() -> None:
+    script = parse("for (i := 0; i < 10; i := i + 1) { x := i; }")
+    stmt = script.statements[0]
+    assert isinstance(stmt, ForCStyle)
+    assert isinstance(stmt.init, AssignStmt)
+    assert isinstance(stmt.cond, BinaryOp) and stmt.cond.op == "<"
+    assert isinstance(stmt.step, AssignStmt)
+    assert isinstance(stmt.body, Block)
+
+
+# ── Phase 3: while / do-while ────────────────────────────────────
+
+
+def test_while_loop() -> None:
+    script = parse("while (x < 10) x := x + 1;")
+    stmt = script.statements[0]
+    assert isinstance(stmt, WhileStmt)
+    assert isinstance(stmt.cond, BinaryOp) and stmt.cond.op == "<"
+    assert isinstance(stmt.body, AssignStmt)
+
+
+def test_do_while_loop() -> None:
+    script = parse("do { x := x + 1; } while (x < 10);")
+    stmt = script.statements[0]
+    assert isinstance(stmt, DoWhile)
+    assert isinstance(stmt.body, Block)
+    assert isinstance(stmt.cond, BinaryOp) and stmt.cond.op == "<"
+
+
+# ── Phase 3: try / onerror ───────────────────────────────────────
+
+
+def test_try_onerror_blocks() -> None:
+    script = parse(
+        "try { obj.set(\"F\", 0, 0); } onerror { msginfo(\"oops\"); }"
+    )
+    stmt = script.statements[0]
+    assert isinstance(stmt, TryStmt)
+    assert isinstance(stmt.try_block, Block)
+    assert isinstance(stmt.onerror_block, Block)
+
+
+def test_try_without_onerror_is_parse_error() -> None:
+    with pytest.raises(ParseError) as exc:
+        parse("try { x := 1; }")
+    assert "onerror" in exc.value.expected
+
+
+# ── Phase 3: row selector & array index ──────────────────────────
+
+
+def test_row_selector_in_expression() -> None:
+    script = parse("v := process.PARAMETER_VALUE[PARAMETER_NAME = 'pfCode'];")
+    rhs = script.statements[0].value
+    assert isinstance(rhs, TableSelector)
+    assert rhs.field == "PARAMETER_VALUE"
+    assert isinstance(rhs.condition, BinaryOp) and rhs.condition.op == "="
+
+
+def test_array_index() -> None:
+    script = parse("v := a[0];")
+    rhs = script.statements[0].value
+    assert isinstance(rhs, ArrayIndex)
+    assert isinstance(rhs.array, Identifier) and rhs.array.name == "a"
+    assert isinstance(rhs.index, NumberLit) and rhs.index.value == 0
+
+
+# ── Phase 3: real fixture mix ────────────────────────────────────
+
+
+def test_real_fixture_mix() -> None:
+    """Trimmed BizRule body exercising foreach, if-else, calls, field access,\n    row selector, array index, and try/onerror."""
+    src = (
+        "foreach matchingProc in mergedMatchingProcesses do {\n"
+        "    pattern := matchingProc[1];\n"
+        "    if (process.findRecord(\"PARAMETER_NAME\", \"jurisdiction\")) {\n"
+        "        juridictionProcess := process.PARAMETER_VALUE[PARAMETER_NAME = 'jurisdiction'];\n"
+        "    } else {\n"
+        "        juridictionProcess := \"\";\n"
+        "    }\n"
+        "    try {\n"
+        "        obj.set(\"F\", 0, 0);\n"
+        "    } onerror {\n"
+        "        msginfo(\"err\");\n"
+        "    }\n"
+        "}\n"
+    )
+    script = parse(src)
+    assert len(script.statements) == 1
+    outer = script.statements[0]
+    assert isinstance(outer, ForeachList)
+    body = outer.body
+    assert isinstance(body, Block)
+    # Inside the loop body we expect: AssignStmt, IfStmt, TryStmt.
+    assert isinstance(body.statements[0], AssignStmt)
+    assert isinstance(body.statements[0].value, ArrayIndex)
+    assert isinstance(body.statements[1], IfStmt)
+    then_block = body.statements[1].then_branch
+    assert isinstance(then_block, Block)
+    assert isinstance(then_block.statements[0].value, TableSelector)
+    assert isinstance(body.statements[2], TryStmt)
+
+
+# ── Phase 3: full real fixture from disk ─────────────────────────
+
+
+FIXTURES = Path(__file__).parent / "fixtures" / "smartrules"
+
+
+def test_parse_full_update_document_process_fixture() -> None:
+    """End-to-end smoke: parse the real fixture without raising.
+
+    Surfaces unsupported constructs *before* Phase 4 so engine work
+    isn't blocked by an unexpected parse failure.
+    """
+    src = (FIXTURES / "update_document_process.smartrule").read_text(encoding="utf-8")
+    script = parse(src)
+    assert len(script.statements) > 0
