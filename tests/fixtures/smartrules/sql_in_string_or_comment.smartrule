@@ -1,0 +1,5 @@
+// Fixture: getSqlData appears inside a string and inside a comment;
+// neither should be flagged by SR030.
+// foreach x in xs do { getSqlData(x); }
+msg := "foreach x in xs do { getSqlData(x); }";
+msginfo(msg);

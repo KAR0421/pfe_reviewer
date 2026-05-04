@@ -96,6 +96,21 @@ class Parser:
             raise ParseError(tok.line, tok.col, what or kind.name, tok)
         return self.advance()
 
+    def _peek_kw_ident(self, name: str, offset: int = 0) -> bool:
+        """True if the token at ``offset`` is the contextual keyword ``name``.
+
+        ``in``, ``to``, ``downto`` are not reserved (see ``tokens.py``);
+        the parser recognises them by name where the grammar requires.
+        """
+        tok = self.peek(offset)
+        return tok.kind is TokenKind.IDENT and tok.value.lower() == name
+
+    def _expect_kw_ident(self, name: str, what: str) -> Token:
+        if not self._peek_kw_ident(name):
+            tok = self.peek()
+            raise ParseError(tok.line, tok.col, what, tok)
+        return self.advance()
+
     # ── Entry point ────────────────────────────────────────────────
 
     def parse_script(self) -> Script:
@@ -113,6 +128,12 @@ class Parser:
         return stmts
 
     def parse_statement(self) -> Stmt:
+        """Parse a single statement.
+
+        Per the language spec, ``;`` is a *separator* between statements
+        on the same line, not a terminator at end-of-line. The actual
+        end-of-statement check lives in :meth:`_consume_stmt_end`.
+        """
         tok = self.peek()
         kind = tok.kind
 
@@ -167,12 +188,11 @@ class Parser:
         """
         kw = self.expect(TokenKind.KW_FOREACH, "'foreach'")
         # Decide on the form by looking past the first ident.
-        if self.peek().kind is TokenKind.IDENT and self.peek(1).kind is TokenKind.KW_IN:
+        if self.peek().kind is TokenKind.IDENT and self._peek_kw_ident("in", 1):
             var_tok = self.advance()
-            self.expect(TokenKind.KW_IN, "'in'")
+            self._expect_kw_ident("in", "'in'")
             iterable = self.parse_expression()
-            self.expect(TokenKind.KW_DO, "'do'")
-            body = self.parse_statement()
+            body = self._parse_loop_body()
             return ForeachList(
                 var=Identifier(name=var_tok.value, line=var_tok.line),
                 iterable=iterable,
@@ -181,8 +201,7 @@ class Parser:
             )
         # Table form: parse a postfix expression (obj.TABLE possibly chained).
         target = self._parse_postfix()
-        self.expect(TokenKind.KW_DO, "'do'")
-        body = self.parse_statement()
+        body = self._parse_loop_body()
         return ForeachTable(target=target, body=body, line=kw.line)
 
     def parse_for(self) -> Stmt:
@@ -217,17 +236,16 @@ class Parser:
         var_tok = self.expect(TokenKind.IDENT, "loop variable")
         self.expect(TokenKind.OP_ASSIGN, "':=' in counted for")
         start = self.parse_expression()
-        dir_tok = self.peek()
-        if dir_tok.kind is TokenKind.KW_TO:
+        if self._peek_kw_ident("to"):
             direction = "to"
-        elif dir_tok.kind is TokenKind.KW_DOWNTO:
+        elif self._peek_kw_ident("downto"):
             direction = "downto"
         else:
-            raise ParseError(dir_tok.line, dir_tok.col, "'to' or 'downto'", dir_tok)
+            tok = self.peek()
+            raise ParseError(tok.line, tok.col, "'to' or 'downto'", tok)
         self.advance()
         end = self.parse_expression()
-        self.expect(TokenKind.KW_DO, "'do'")
-        body = self.parse_statement()
+        body = self._parse_loop_body()
         return ForCounter(
             var=Identifier(name=var_tok.value, line=var_tok.line),
             start=start,
@@ -247,6 +265,21 @@ class Parser:
             return AssignStmt(target=expr, op=assign.value, value=value, line=start_line)
         return ExprStmt(expr=expr, line=start_line)
 
+    def _parse_loop_body(self) -> Stmt:
+        """Parse a loop body, accepting either ``do <stmt>`` or a block.
+
+        The grammar reference writes ``foreach X in Y do stmt`` and
+        ``for X := a to b do stmt``, but real BizRule scripts routinely
+        omit ``do`` when the body is a brace-delimited block:
+        ``foreach a in list { ... }``. Both forms are accepted.
+        """
+        if self.match(TokenKind.KW_DO) is not None:
+            return self.parse_statement()
+        if self.peek().kind is TokenKind.LBRACE:
+            return self.parse_block()
+        tok = self.peek()
+        raise ParseError(tok.line, tok.col, "'do' or '{' for loop body", tok)
+
     def parse_while(self) -> WhileStmt:
         kw = self.expect(TokenKind.KW_WHILE, "'while'")
         self.expect(TokenKind.LPAREN, "'(' after 'while'")
@@ -262,7 +295,8 @@ class Parser:
         self.expect(TokenKind.LPAREN, "'(' after 'while'")
         cond = self.parse_expression()
         self.expect(TokenKind.RPAREN, "')'")
-        self.expect(TokenKind.SEMI, "';' after do-while")
+        # Trailing `;` is optional at end-of-line, per the spec.
+        self._consume_stmt_end()
         return DoWhile(body=body, cond=cond, line=kw.line)
 
     # ── try / onerror ──────────────────────────────────────────────
@@ -281,9 +315,11 @@ class Parser:
     def _parse_terminator(self, cls):
         kw = self.advance()
         value: Expr | None = None
-        if self.peek().kind is not TokenKind.SEMI:
+        # A bare ``return`` / ``skip`` / ``abort`` (no value) is signalled
+        # by the parser already being at a statement-end position.
+        if not self._at_stmt_end():
             value = self.parse_expression()
-        self.expect(TokenKind.SEMI, "';' after statement")
+        self._consume_stmt_end()
         return cls(value=value, line=kw.line)
 
     def _parse_expr_or_assign_stmt(self) -> Stmt:
@@ -292,10 +328,66 @@ class Parser:
         assign = self.match(TokenKind.OP_ASSIGN, TokenKind.OP_COND_ASSIGN)
         if assign is not None:
             value = self.parse_expression()
-            self.expect(TokenKind.SEMI, "';' after assignment")
+            self._consume_stmt_end()
             return AssignStmt(target=expr, op=assign.value, value=value, line=start_line)
-        self.expect(TokenKind.SEMI, "';' after expression statement")
+        self._consume_stmt_end()
         return ExprStmt(expr=expr, line=start_line)
+
+    def _last_consumed_line(self) -> int:
+        """Line of the most recently consumed token (1 if nothing yet)."""
+        if self.pos == 0:
+            return self.tokens[0].line if self.tokens else 1
+        return self.tokens[self.pos - 1].line
+
+    def _at_stmt_end(self) -> bool:
+        """True if the parser is positioned at a statement boundary.
+
+        A statement ends when the next token is one of:
+        - ``;`` (explicit separator)
+        - ``}`` or EOF (structural end of the enclosing block / script)
+        - on a strictly later line than the last consumed token (newline
+          acts as the natural separator)
+        - ``else`` (structural follower of an if-then-branch)
+
+        This is the *peek*-only version; :meth:`_consume_stmt_end` uses
+        the same logic but additionally consumes a leading ``;``.
+        """
+        tok = self.peek()
+        if tok.kind in (TokenKind.SEMI, TokenKind.RBRACE, TokenKind.EOF, TokenKind.KW_ELSE):
+            return True
+        return tok.line > self._last_consumed_line()
+
+    def _consume_stmt_end(self) -> None:
+        """Enforce the statement-separator rule and consume a leading ``;``.
+
+        Per the language spec, ``;`` is a *separator* between statements,
+        not a terminator at end-of-line:
+
+        - ``x := 1`` (newline)         → valid
+        - ``x := 1;``                  → valid
+        - ``x := 1; y := 2``           → valid (``;`` separates them)
+        - ``x := 1 y := 2``            → ParseError: ``;`` required between
+          two statements on the same line.
+
+        Implementation: an explicit ``;`` is consumed; otherwise the next
+        token must already be at a statement boundary (different line, or
+        ``}`` / EOF / ``else``). Anything else means the user wrote two
+        statements on the same line without separating them.
+        """
+        if self.peek().kind is TokenKind.SEMI:
+            self.advance()
+            return
+        tok = self.peek()
+        if tok.kind in (TokenKind.RBRACE, TokenKind.EOF, TokenKind.KW_ELSE):
+            return
+        if tok.line > self._last_consumed_line():
+            return
+        raise ParseError(
+            tok.line,
+            tok.col,
+            "';' between statements on the same line",
+            tok,
+        )
 
     # ── Expressions (precedence climbing) ─────────────────────────
 

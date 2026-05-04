@@ -71,8 +71,8 @@ def test_tokenize_error_yields_single_sr999(isolated_checks) -> None:
 
 
 def test_parse_error_yields_single_sr999(isolated_checks) -> None:
-    # Missing semicolon → ParseError at EOF.
-    br = FakeBizRule(name="R3", script="x := 1")
+    # Two statements on the same line without a separating ';' → ParseError.
+    br = FakeBizRule(name="R3", script="x := 1 y := 2")
     report = run_review(br)
     assert len(report.findings) == 1
     assert report.findings[0].rule_id == "SR999"

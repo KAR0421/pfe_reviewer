@@ -1,0 +1,6 @@
+// Positive case for SR030: a database query runs once per item.
+// Both pipelines should agree on the offending line number.
+items := getObjects("MxThing", "");
+foreach item in items do {
+    rows := getSqlData("SELECT id FROM t WHERE code = '" + item.CODE + "'");
+}

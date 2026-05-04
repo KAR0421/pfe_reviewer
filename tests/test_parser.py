@@ -199,11 +199,45 @@ def test_empty_script_parses() -> None:
 # ── Error path ────────────────────────────────────────────────────
 
 
-def test_missing_semicolon_raises_parse_error() -> None:
+# ── Statement-separator rule (`;` is optional at end-of-line) ────
+
+
+def test_statement_without_trailing_semicolon_is_valid() -> None:
+    """Per the spec, ``;`` is optional when the statement ends the line."""
+    script = parse("x := 1")
+    assert len(script.statements) == 1
+    assert isinstance(script.statements[0], AssignStmt)
+
+
+def test_two_statements_same_line_without_separator_raises() -> None:
+    """``x := 1 y := 2`` lacks the required separator between them."""
     with pytest.raises(ParseError) as exc:
-        parse("x := 1")
-    # The error position points at the EOF where ';' was expected.
-    assert exc.value.expected.startswith("';'")
+        parse("x := 1 y := 2")
+    # Care about *where* the error is, not how the message is phrased.
+    assert exc.value.line == 1
+
+
+def test_two_statements_on_separate_lines_without_semicolons() -> None:
+    """Newline alone separates statements; no ``;`` required."""
+    script = parse("x := 1\ny := 2\n")
+    assert len(script.statements) == 2
+    assert all(isinstance(s, AssignStmt) for s in script.statements)
+
+
+def test_script_ending_without_semicolon_is_valid() -> None:
+    """A script may end without a trailing ``;`` on its last statement."""
+    script = parse("foo()\nbar()")
+    assert len(script.statements) == 2
+
+
+def test_block_statements_one_per_line_without_semicolons() -> None:
+    """``{ x := 1 \\n y := 2 }`` — newline separates inside a block too."""
+    script = parse("{\n  x := 1\n  y := 2\n}")
+    assert len(script.statements) == 1
+    block = script.statements[0]
+    assert isinstance(block, Block)
+    assert len(block.statements) == 2
+    assert all(isinstance(s, AssignStmt) for s in block.statements)
 
 
 def test_unclosed_paren_raises_parse_error() -> None:
@@ -344,6 +378,13 @@ def test_do_while_loop() -> None:
     assert isinstance(stmt.cond, BinaryOp) and stmt.cond.op == "<"
 
 
+def test_do_while_without_trailing_semicolon() -> None:
+    """Per the separator rule, the trailing ';' on do-while is optional."""
+    script = parse("do { x := x + 1; } while (x < 10)")
+    stmt = script.statements[0]
+    assert isinstance(stmt, DoWhile)
+
+
 # ── Phase 3: try / onerror ───────────────────────────────────────
 
 
@@ -361,6 +402,33 @@ def test_try_without_onerror_is_parse_error() -> None:
     with pytest.raises(ParseError) as exc:
         parse("try { x := 1; }")
     assert "onerror" in exc.value.expected
+
+
+# ── Phase 3+: if/else with no `;` before `else` ──────────────────
+
+
+def test_if_then_branch_may_omit_semicolon_before_else() -> None:
+    """A single-statement then-branch may drop its trailing ``;`` before ``else``.
+
+    Mirrors a real construct found in sample.pack.xml around line 47, where
+    a multi-line string-concatenated assignment is followed directly by
+    ``else`` with no terminating ``;``.
+    """
+    src = (
+        "if (x = 1)\n"
+        "y := y + \"a\"\n"
+        "else\n"
+        "y := y + \"b\";\n"
+    )
+    script = parse(src)
+    assert len(script.statements) == 1
+    stmt = script.statements[0]
+    assert isinstance(stmt, IfStmt)
+    assert isinstance(stmt.then_branch, AssignStmt)
+    assert isinstance(stmt.else_branch, AssignStmt)
+    # Sanity: a normal `;`-terminated then-branch still works.
+    script2 = parse("if (x = 1) y := 1; else y := 2;")
+    assert isinstance(script2.statements[0], IfStmt)
 
 
 # ── Phase 3: row selector & array index ──────────────────────────

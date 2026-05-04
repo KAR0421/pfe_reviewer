@@ -50,9 +50,6 @@ class TokenKind(Enum):
     KW_DO = auto()
     KW_FOR = auto()
     KW_FOREACH = auto()
-    KW_IN = auto()
-    KW_TO = auto()
-    KW_DOWNTO = auto()
     KW_RETURN = auto()
     KW_SKIP = auto()
     KW_ABORT = auto()
@@ -65,7 +62,14 @@ class TokenKind(Enum):
     EOF = auto()
 
 
-# Map lowercase keyword text to TokenKind
+# Map lowercase keyword text to TokenKind.
+#
+# Note: ``in``, ``to``, and ``downto`` are intentionally *not* reserved.
+# They are contextual keywords — used by ``for X := a to b`` and
+# ``foreach X in Y`` — but real BizRule scripts also use them as plain
+# identifiers (e.g. ``foreach to in reqDataRes do ... toId := to[0]``).
+# The parser recognises them by name when the grammar position requires
+# them; everywhere else the tokenizer emits them as ``IDENT``.
 KEYWORDS: dict[str, TokenKind] = {
     "if": TokenKind.KW_IF,
     "else": TokenKind.KW_ELSE,
@@ -74,9 +78,6 @@ KEYWORDS: dict[str, TokenKind] = {
     "do": TokenKind.KW_DO,
     "for": TokenKind.KW_FOR,
     "foreach": TokenKind.KW_FOREACH,
-    "in": TokenKind.KW_IN,
-    "to": TokenKind.KW_TO,
-    "downto": TokenKind.KW_DOWNTO,
     "return": TokenKind.KW_RETURN,
     "skip": TokenKind.KW_SKIP,
     "abort": TokenKind.KW_ABORT,

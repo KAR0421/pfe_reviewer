@@ -1,0 +1,4 @@
+// Fixture: SQL queries OUTSIDE any loop (SR030 negative case)
+req := "select id from t";
+rows := getSqlData(req);
+msginfo("done");

@@ -244,7 +244,7 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | pending | — |
 | SR020   | `check_static_conditions`     | `StaticConditionCheck` | pending | —               |
 | SR021   | `check_dead_code`             | `DeadCodeCheck`       | pending | —                |
-| SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | pending | —                |
+| SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
 | SR031   | `check_nested_loops`          | `NestedLoopCheck`     | pending | —                |
 | SR032   | `check_repeated_queries`      | `RepeatedQueryCheck`  | pending | —                |
 | SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | pending | —         |
