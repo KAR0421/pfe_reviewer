@@ -1,0 +1,8 @@
+// Positive: foreach inside foreach. Inner loop on line 4.
+foreach a in xs do
+{
+  foreach b in ys do
+  {
+    msginfo("inner");
+  }
+}

@@ -1,0 +1,9 @@
+// Positive: dead code right after a `return`.
+x := 1;
+if (x = 1)
+{
+  msginfo("ok");
+  return;
+  msginfo("never");
+}
+y := 2;

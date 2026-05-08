@@ -1,0 +1,9 @@
+// Two nested foreaches with a getObjects call inside the inner body.
+// Exercises the "getobject" prefix rule in EXPENSIVE_FUNCTIONS.
+foreach a in xs do
+{
+  foreach b in ys do
+  {
+    objs := getObjects("MxClassDef", b);
+  }
+}

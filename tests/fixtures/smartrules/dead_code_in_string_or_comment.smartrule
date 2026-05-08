@@ -1,0 +1,6 @@
+// Edge: the words `return`, `abort`, `skip` appear inside comments
+// and inside string literals, but never as real statements.
+// Sample comment: return; abort; skip; -- not statements.
+msg := "abort the mission and return now; skip step 1";
+log(msg);
+foo := "skip";

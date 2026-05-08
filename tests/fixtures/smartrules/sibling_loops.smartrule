@@ -1,0 +1,9 @@
+// Negative: two sibling loops, neither nested in the other.
+foreach a in xs do
+{
+  msginfo("a");
+}
+foreach b in ys do
+{
+  msginfo("b");
+}

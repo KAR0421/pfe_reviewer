@@ -1,0 +1,7 @@
+// Edge: a single do-while loop. The legacy regex pushed two frames
+// (one for `do`, one for the trailing `while`), spuriously reporting
+// nesting. The AST sees one DoWhile node.
+do
+{
+  x := x + 1;
+} while (x < 10);

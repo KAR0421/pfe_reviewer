@@ -243,12 +243,14 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | SR001   | `check_naming_conventions`    | `GenericVarNameCheck` | pending | —                |
 | SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | pending | — |
 | SR020   | `check_static_conditions`     | `StaticConditionCheck` | pending | —               |
-| SR021   | `check_dead_code`             | `DeadCodeCheck`       | pending | —                |
+| SR021   | `check_dead_code`             | `DeadCodeCheck`       | done    | yes (subset of legacy; legacy over-reports on comments/strings/if-else — see `tests/test_checks_logic.py`) |
 | SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
-| SR031   | `check_nested_loops`          | `NestedLoopCheck`     | pending | —                |
+| SR031   | `check_nested_loops`          | `NestedLoopCheck` [^sr031] | done    | yes (subset; legacy over-reports on comments/strings/do-while/brace-desync — see `tests/test_checks_performance.py`) |
 | SR032   | `check_repeated_queries`      | `RepeatedQueryCheck`  | pending | —                |
 | SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | pending | —         |
 | SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | pending | —         |
+
+[^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
 
 New AST-native checks (no legacy counterpart, add directly in the new pipeline):
 

@@ -5,3 +5,4 @@ each ``@register_check`` decorator runs and populates ``CHECKS``.
 """
 
 from . import performance  # noqa: F401  (registers SR030)
+from . import logic  # noqa: F401  (registers SR021)

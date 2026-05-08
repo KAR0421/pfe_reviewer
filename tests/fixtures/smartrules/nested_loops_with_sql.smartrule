@@ -1,0 +1,9 @@
+// Two nested foreaches with getSqlData inside the inner body.
+foreach a in xs do
+{
+  foreach b in ys do
+  {
+    req := "select 1 from dual";
+    res := getSqlData(req);
+  }
+}

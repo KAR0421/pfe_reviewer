@@ -1,0 +1,6 @@
+// Edge: the words `for`, `foreach`, `while`, `do` appear only inside
+// comments and string literals — there are no actual loop constructs.
+// Comment example: foreach x in y do { while (true) { ... } }
+msg := "for each row do something while waiting";
+log(msg);
+note := 'do not foreach the list while iterating';

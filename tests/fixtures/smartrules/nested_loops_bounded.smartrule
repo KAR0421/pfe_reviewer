@@ -1,0 +1,8 @@
+// Two nested counted-for loops with literal bounds — provably O(constant).
+for i := 1 to 5 do
+{
+  for j := 1 to 10 do
+  {
+    total := total + 1;
+  }
+}

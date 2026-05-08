@@ -1,0 +1,11 @@
+// Negative: terminator is the last statement of every block.
+x := 1;
+if (x = 1)
+{
+  msginfo("done");
+  return;
+}
+else
+{
+  abort;
+}
