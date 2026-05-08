@@ -1,0 +1,5 @@
+// AST-only: parens are transparent — `(x) = x` is a self-compare.
+if ((x) = x)
+{
+  y := 2;
+}

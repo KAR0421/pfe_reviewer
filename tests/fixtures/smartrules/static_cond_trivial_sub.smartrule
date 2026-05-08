@@ -1,0 +1,5 @@
+// AST-only: literal-vs-literal hidden inside `and`.
+if (1 = 1 and x)
+{
+  y := 2;
+}

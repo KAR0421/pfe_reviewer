@@ -131,7 +131,7 @@ stable; pick the next free ID when adding a new check.
 #### Static logic
 | ID    | Severity | Description |
 |-------|----------|-------------|
-| SR020 | warning  | Condition is always true / always false (two literals, same var both sides). |
+| SR020 | error    | Condition is always true / always false (two literals, same var both sides, or a literal-vs-literal sub-expression hidden inside `and`/`or`). [^sr020] |
 | SR021 | warning  | Dead code after `return` / `abort` / `skip`. |
 | SR022 | info     | Pre-conditions placed after computations (suboptimal ordering). |
 
@@ -242,7 +242,7 @@ pack fixture, `reviewer_legacy.py` is deleted.
 |---------|-------------------------------|-----------------------|---------|------------------|
 | SR001   | `check_naming_conventions`    | `GenericVarNameCheck` | pending | —                |
 | SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | pending | — |
-| SR020   | `check_static_conditions`     | `StaticConditionCheck` | pending | —               |
+| SR020   | `check_static_conditions`     | `StaticConditionCheck` | done    | yes (subset; legacy under-reports on nested parens / conjunctions — see `tests/test_checks_logic.py`) |
 | SR021   | `check_dead_code`             | `DeadCodeCheck`       | done    | yes (subset of legacy; legacy over-reports on comments/strings/if-else — see `tests/test_checks_logic.py`) |
 | SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
 | SR031   | `check_nested_loops`          | `NestedLoopCheck` [^sr031] | done    | yes (subset; legacy over-reports on comments/strings/do-while/brace-desync — see `tests/test_checks_performance.py`) |
@@ -251,6 +251,8 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | pending | —         |
 
 [^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
+
+[^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
 
 New AST-native checks (no legacy counterpart, add directly in the new pipeline):
 

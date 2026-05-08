@@ -1,0 +1,7 @@
+// Edge: legacy regex flags these, AST should not.
+// if (1 = 1) is just a comment — do not flag
+msg := "if (1 = 1)";
+if (x = y)
+{
+  z := 1;
+}

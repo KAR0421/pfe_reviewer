@@ -153,3 +153,158 @@ def test_sr021_ast_lines_are_subset_of_legacy(fixture_name: str) -> None:
         f"AST flagged terminator lines {ast_lines - legacy_lines} that "
         f"legacy did not — recall regression."
     )
+
+
+# ════════════════════════════════════════════════════════════════════
+# SR020 StaticConditionCheck
+# ════════════════════════════════════════════════════════════════════
+
+from reviewer_legacy import check_static_conditions  # noqa: E402
+
+
+_LEGACY_SR020_LINE_RE = re.compile(r"at line (\d+):")
+
+
+def _ast_sr020_lines(br: FakeBizRule) -> set[int]:
+    return {f.line for f in run_review(br).findings if f.rule_id == "SR020"}
+
+
+def _legacy_sr020_lines(br: FakeBizRule) -> set[int]:
+    out: set[int] = set()
+    for issue in check_static_conditions(br.script):
+        m = _LEGACY_SR020_LINE_RE.search(issue)
+        if m:
+            out.add(int(m.group(1)))
+    return out
+
+
+# ── Positive ────────────────────────────────────────────────────────
+
+
+def test_sr020_positive_literal_eq() -> None:
+    br = _load("static_cond_literal_eq.smartrule")
+    # `if (1 = 1)` is on line 3.
+    assert _ast_sr020_lines(br) == {3}
+
+
+def test_sr020_positive_severity_is_error() -> None:
+    """User policy: any literal-vs-literal condition is wrong regardless
+    of context — reviewer must fire loudly, not as a warning."""
+    br = _load("static_cond_literal_eq.smartrule")
+    sr020 = [f for f in run_review(br).findings if f.rule_id == "SR020"]
+    assert len(sr020) == 1
+    assert sr020[0].severity == "error"
+    assert sr020[0].category == "logic"
+
+
+# ── Negative ────────────────────────────────────────────────────────
+
+
+def test_sr020_negative_dynamic_and_bare_truthy() -> None:
+    """`if (x = 1)` and `if (x)` must NOT be flagged. The second form is
+    the idiomatic null/truthy check in this language and is widespread
+    in real BizRules — flagging it would drown the user in noise.
+    """
+    br = _load("static_cond_dynamic.smartrule")
+    assert _ast_sr020_lines(br) == set()
+
+
+# ── Edge: comments and string literals ─────────────────────────────
+
+
+def test_sr020_ignores_conditions_inside_comments_and_strings() -> None:
+    """Legacy regex `\\bif\\s*\\(...\\)` matches inside comments and
+    string literals, so it (wrongly) flags `// if (1 = 1)` and
+    `msg := "if (1 = 1)"`. The AST pipeline never sees comments, and
+    string literals are opaque tokens — both classes of false positive
+    disappear.
+    """
+    br = _load("static_cond_in_string_or_comment.smartrule")
+    assert _ast_sr020_lines(br) == set()
+
+
+# ── AST-only: structural improvements over the regex form ──────────
+
+
+def test_sr020_ast_only_self_compare_field_access() -> None:
+    """`obj.F = obj.F` — legacy compares the literal text on each side,
+    but its split-by-operator + strip dance is fragile (any whitespace
+    or sub-expression difference breaks it). The AST walks two
+    `FieldAccess` trees and reports them as structurally equal.
+    """
+    br = _load("static_cond_self_field.smartrule")
+    assert _ast_sr020_lines(br) == {2}
+
+
+def test_sr020_ast_only_self_compare_call() -> None:
+    """`f(x) = f(x)` — text-equality happens to work for legacy here,
+    but the AST proves the property structurally (same callee, same
+    args), which generalises to `f(a, b) = f(a, b)`, etc.
+    """
+    br = _load("static_cond_self_call.smartrule")
+    assert _ast_sr020_lines(br) == {2}
+
+
+def test_sr020_ast_only_trivial_subcondition() -> None:
+    """`1 = 1 and x` — legacy splits the condition at the FIRST operator
+    it finds, sees `1 and x` on the right, gives up, and emits nothing.
+    The AST recurses through `and`/`or` and catches the dead `1 = 1`.
+    Severity: error — leftover debug code is loud, not redeemed by the
+    live conjunct.
+    """
+    br = _load("static_cond_trivial_sub.smartrule")
+    findings = [
+        f for f in run_review(br).findings if f.rule_id == "SR020"
+    ]
+    assert {f.line for f in findings} == {2}
+    assert all(f.severity == "error" for f in findings)
+
+
+def test_sr020_ast_only_parens_are_transparent() -> None:
+    """`(x) = x` — legacy's text split sees ` (x) ` vs ` x `, decides
+    they're not equal, and stays silent. The AST parser drops the
+    redundant parens, so structural equality still fires.
+    """
+    br = _load("static_cond_parens.smartrule")
+    assert _ast_sr020_lines(br) == {2}
+
+
+# ── Diff-test: AST findings ⊆ legacy findings ──────────────────────
+#
+# Excluded fixtures (AST flags lines legacy MISSES, by design):
+#   - static_cond_self_field.smartrule  (legacy can't structurally eq)
+#   - static_cond_self_call.smartrule   (legacy's `(.*?)` truncates at
+#                                        the first `)`, so it never
+#                                        sees `f(x) = f(x)`)
+#   - static_cond_trivial_sub.smartrule (legacy splits at first `=`,
+#                                        misses the dead conjunct)
+#   - static_cond_parens.smartrule      (legacy text-split breaks)
+#   - update_document_process.smartrule (real-world: `f(a) = f(a) and
+#                                        f(a) = f(a)` — both legacy
+#                                        weaknesses combined)
+# These represent the AST pipeline's *improvements*, asserted by their
+# own dedicated tests above.
+
+
+@pytest.mark.parametrize(
+    "fixture_name",
+    [
+        "static_cond_literal_eq.smartrule",
+        "static_cond_dynamic.smartrule",
+        "static_cond_in_string_or_comment.smartrule",
+        "compute_template_order.smartrule",
+    ],
+)
+def test_sr020_ast_lines_are_subset_of_legacy(fixture_name: str) -> None:
+    """For real-world fixtures, AST recall must not exceed legacy:
+    every line the AST flags must also be flagged by legacy. Legacy
+    over-flags on comments and strings — those are legacy FPs the AST
+    correctly suppresses, hence the strict subset relation.
+    """
+    br = _load(fixture_name)
+    ast_lines = _ast_sr020_lines(br)
+    legacy_lines = _legacy_sr020_lines(br)
+    assert ast_lines <= legacy_lines, (
+        f"AST flagged lines {ast_lines - legacy_lines} that legacy did "
+        f"not — recall regression on {fixture_name}."
+    )

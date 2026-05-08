@@ -1,0 +1,5 @@
+// AST-only: structural self-compare on a field access.
+if (obj.F = obj.F)
+{
+  x := 1;
+}

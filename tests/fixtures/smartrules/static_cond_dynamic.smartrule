@@ -1,0 +1,10 @@
+// Negative: real comparison and bare-truthy — neither should fire.
+x := 0;
+if (x = 1)
+{
+  y := 2;
+}
+if (x)
+{
+  y := 3;
+}
