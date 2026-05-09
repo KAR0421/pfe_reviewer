@@ -1,0 +1,8 @@
+// SR012.1 negative: trivial script — zero branches, zero loops, zero
+// risky calls. Even with no inline comments at all, no observability
+// requirement should apply.
+x1 := 1;
+x2 := 2;
+x3 := 3;
+x4 := 4;
+x5 := 5;

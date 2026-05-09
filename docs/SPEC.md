@@ -124,9 +124,10 @@ stable; pick the next free ID when adding a new check.
 #### Minimal documentation
 | ID    | Severity | Description |
 |-------|----------|-------------|
-| SR010 | error    | Missing or empty `USER_COMMENT`. |
-| SR011 | warning  | Missing or empty `DESCRIPTION`. |
-| SR012 | info     | Comments describe *how* instead of *why*. |
+| SR010   | error    | Missing or empty `USER_COMMENT`. |
+| SR011   | warning  | Missing or empty `DESCRIPTION`. |
+| SR012.1 | warning  | Insufficient inline comment density: fewer than 1 `//` comment per 12 branches/loops/risky calls. Complexity definition same as SR091 (branches + loops + risky_calls). [^sr012_1] |
+| SR012.2 | info     | Comments describe *how* instead of *why*. |
 
 #### Static logic
 | ID    | Severity | Description |
@@ -241,7 +242,8 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | Rule ID | Legacy function               | AST check class       | Status  | Diff-test clean? |
 |---------|-------------------------------|-----------------------|---------|------------------|
 | SR001   | `check_naming_conventions`    | `GenericVarNameCheck` | pending | —                |
-| SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | pending | — |
+| SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | done    | yes (faithful port; AST and legacy agree on every input — see `tests/test_checks_docs.py`) |
+| SR012.1 | — (AST-native, no legacy)     | `InlineCommentDensityCheck` | done    | n/a (no legacy counterpart — uses tokenizer comment side-channel; see `tests/test_checks_docs.py` and `[^sr012_1]`) |
 | SR020   | `check_static_conditions`     | `StaticConditionCheck` | done    | yes (subset; legacy under-reports on nested parens / conjunctions — see `tests/test_checks_logic.py`) |
 | SR021   | `check_dead_code`             | `DeadCodeCheck`       | done    | yes (subset of legacy; legacy over-reports on comments/strings/if-else — see `tests/test_checks_logic.py`) |
 | SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
@@ -253,6 +255,8 @@ pack fixture, `reviewer_legacy.py` is deleted.
 [^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
 
 [^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
+
+[^sr012_1]: SR012.1 is an AST-native check (no legacy counterpart). Counts are taken from `CheckContext.comments` (tokenizer side-channel) and `_count_complexity` (shared with SR091). The 1:12 ratio targets non-obvious code: assignments don't need comments, but branches and risky calls usually do.
 
 [^sr091]: `TooFewLogsCheck` is a deliberate reformulation of the legacy heuristic (`len(lines) > 50 and num_logs < 3`). A script with high branching and risky operations (SQL / service / live-object lookups) but no logs is unobservable in production; a long but straight-line script with no branches needs no logs to debug. The AST rule fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire.
 
