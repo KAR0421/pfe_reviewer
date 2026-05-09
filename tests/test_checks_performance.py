@@ -10,7 +10,11 @@ import pytest
 # Importing the module triggers @register_check.
 from reviewer.checks import performance  # noqa: F401
 from reviewer.engine.runner import run_review
-from reviewer_legacy import check_sql_in_loops, check_nested_loops
+from reviewer_legacy import (
+    check_nested_loops,
+    check_repeated_queries,
+    check_sql_in_loops,
+)
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "smartrules"
@@ -268,3 +272,177 @@ def test_sr031_ast_lines_are_subset_of_legacy(fixture_name: str) -> None:
         f"AST flagged inner-loop lines {ast_lines - legacy_lines} that "
         f"legacy did not — recall regression."
     )
+
+
+# ────────────────────────────────────────────────────────────────────
+# SR032 RepeatedQueryCheck
+#
+# Substantial reformulation of legacy ``check_repeated_queries``: the
+# AST version recognises ``getSqlData`` *and* ``getData``, accepts
+# inline / concatenated SQL strings (legacy required a var assignment),
+# and grades severity into three tiers based on how the queries differ.
+#
+# No diff-test against legacy here — the rule has been redefined and
+# the legacy's coverage is a strict subset. We follow the
+# "intentional divergence" pattern from SR091.
+# ────────────────────────────────────────────────────────────────────
+
+
+def _ast_sr032_findings(br: FakeBizRule) -> list:
+    return [f for f in run_review(br).findings if f.rule_id == "SR032"]
+
+
+# ── Tier 1 (error): exact duplicate ─────────────────────────────────
+
+
+def test_sr032_t1_exact_duplicate_emits_error() -> None:
+    br = _load("repeated_query_t1_duplicate.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    # The finding points at the *second* (redundant) call.
+    assert f.line == 3
+    assert f.severity == "error"
+    assert f.category == "performance"
+    assert "Duplicate query" in f.message
+    # Structural check: both line numbers must appear, but the test
+    # does not pin down the exact phrasing connecting them.
+    assert "2" in f.message and "3" in f.message
+
+
+# ── Tier 2 (warning): same WHERE, different SELECT ──────────────────
+
+
+def test_sr032_t2_different_select_emits_warning_with_union_hint() -> None:
+    br = _load("repeated_query_t2_different_select.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 4
+    assert f.severity == "warning"
+    # Hint mentions both fields in the merge suggestion.
+    assert "id" in f.message and "name" in f.message
+    assert "merging" in f.message.lower()
+
+
+# ── Tier 3 (info): same SELECT, one literal-equality value differs ──
+
+
+def test_sr032_t3_one_value_diff_emits_info_with_in_hint() -> None:
+    br = _load("repeated_query_t3_one_value_diff.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 5
+    assert f.severity == "info"
+    # The discriminating column and both literals appear in the hint.
+    assert "code" in f.message
+    assert "'A'" in f.message and "'B'" in f.message
+    assert "IN (" in f.message
+
+
+# ── Negatives ───────────────────────────────────────────────────────
+
+
+def test_sr032_clean_different_tables_no_finding() -> None:
+    br = _load("repeated_query_clean_different_tables.smartrule")
+    assert _ast_sr032_findings(br) == []
+
+
+def test_sr032_clean_multi_column_diff_no_finding() -> None:
+    """Two columns differ → not a single-value-diff; no T3, no T2,
+    no T1."""
+    br = _load("repeated_query_clean_multi_diff.smartrule")
+    assert _ast_sr032_findings(br) == []
+
+
+def test_sr032_clean_different_operator_no_finding() -> None:
+    """``code = 'A'`` vs ``code != 'A'`` is a real semantic
+    difference, not a near-duplicate."""
+    br = _load("repeated_query_clean_different_operator.smartrule")
+    assert _ast_sr032_findings(br) == []
+
+
+# ── Edge: in-string / commented-out queries ─────────────────────────
+
+
+def test_sr032_ignores_strings_and_comments() -> None:
+    """A string literal that *contains* SELECT-text and a commented
+    duplicate must not pair with the live query — only one real call
+    site exists, so there is no pair to compare.
+    """
+    br = _load("repeated_query_in_string_or_comment.smartrule")
+    assert _ast_sr032_findings(br) == []
+
+
+# ── AST-improvement tests (cases legacy missed) ─────────────────────
+
+
+def test_sr032_ast_catches_inline_duplicates_legacy_missed() -> None:
+    """Legacy regex required ``var := "select ..."`` then
+    ``getSqlData(var)``. Two inline ``getSqlData("...")`` calls slipped
+    through. The AST flattens the call argument directly.
+    """
+    br = _load("repeated_query_inline_legacy_miss.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    assert findings[0].line == 6
+    assert findings[0].severity == "error"
+
+    # Confirm legacy really missed it.
+    assert check_repeated_queries(br.script) == []
+
+
+def test_sr032_ast_catches_getdata_calls_legacy_hardcoded_getsqldata() -> None:
+    br = _load("repeated_query_getdata.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+
+    assert check_repeated_queries(br.script) == []
+
+
+def test_sr032_ast_catches_concat_substitution_legacy_missed() -> None:
+    """``"... = '" + item.CODE + "'"`` flattens to a string with the
+    runtime substitution replaced by ``?``. Two such calls then match
+    as exact duplicates.
+    """
+    br = _load("repeated_query_concat_substitution.smartrule")
+    findings = _ast_sr032_findings(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+
+
+# ── No interference with SR030 / SR031 ──────────────────────────────
+
+
+def test_sr032_does_not_fire_on_single_query_in_loop() -> None:
+    """SR030 already flags SQL in loops; SR032 must not pile on when
+    only one query exists in the rule.
+    """
+    br = _load("sql_in_foreach.smartrule")
+    assert _ast_sr032_findings(br) == []
+
+
+# ── Contract: unparseable queries are silently skipped ──────────────
+
+
+def test_sr032_unparseable_queries_are_silently_skipped() -> None:
+    """**Contract**: when a query string cannot be parsed as a single
+    ``SELECT`` (random text, DML, multi-statement, …), the check
+    silently skips that call site. It must not:
+
+    - crash the review (no ``SR998`` finding),
+    - match unparseable strings as duplicates of one another,
+    - or pair an unparseable string with a real query.
+
+    This is the safer default: false positives on garbage would be
+    far more annoying than missing a duplicate inside genuinely
+    malformed code.
+    """
+    br = _load("repeated_query_unparseable.smartrule")
+    report = run_review(br)
+    assert _ast_sr032_findings(br) == []
+    # No collateral crash from the check, either.
+    assert all(f.rule_id != "SR998" for f in report.findings)
+

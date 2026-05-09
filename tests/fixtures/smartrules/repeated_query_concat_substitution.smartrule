@@ -1,0 +1,6 @@
+// SR032 AST-improvement: queries built via string concatenation with
+// an identifier substitution. The AST replaces the unknown identifier
+// with `?`, so two queries that differ only by where they pull the
+// runtime value from still match as a duplicate.
+rows1 := getSqlData("SELECT id FROM mxthing WHERE code = '" + item.CODE + "'");
+rows2 := getSqlData("SELECT id FROM mxthing WHERE code = '" + other.CODE + "'");

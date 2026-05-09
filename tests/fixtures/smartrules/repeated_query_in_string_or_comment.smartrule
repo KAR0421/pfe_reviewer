@@ -1,0 +1,7 @@
+// SR032 edge: a string literal that *contains* a SELECT-like text but
+// is never executed must not be paired with a real query. Likewise a
+// commented-out duplicate. Only the live `getSqlData` call counts.
+msg := "SELECT id FROM mxthing WHERE code = 'A'";
+// rows0 := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rows1 := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+log(msg);

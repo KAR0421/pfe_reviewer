@@ -1,0 +1,3 @@
+// SR032 T1: two identical SELECTs against the same table → tier 1 error.
+rows1 := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rows2 := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");

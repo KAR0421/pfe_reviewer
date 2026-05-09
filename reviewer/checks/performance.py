@@ -8,9 +8,17 @@ from ..ast.nodes import (
     Identifier,
     Node,
     NumberLit,
+    Script,
 )
 from ..engine.registry import register_check
 from ..engine.visitor import Check
+from ._sql import (
+    Conjunct,
+    ParsedQuery,
+    collect_string_assignments,
+    flatten_query_arg,
+    parse_query,
+)
 
 
 @register_check(
@@ -193,3 +201,197 @@ def _contains_expensive_call(node: Node) -> bool:
         if _contains_expensive_call(child):
             return True
     return False
+
+
+# ── SR032 RepeatedQueryCheck ───────────────────────────────────────
+
+
+_QUERY_FUNCTIONS: frozenset[str] = frozenset({"getsqldata", "getdata"})
+
+
+@register_check(
+    rule_id="SR032",
+    category="performance",
+    severity="warning",
+    description=(
+        "Duplicate or near-duplicate queries in the same rule, with "
+        "graded severity (info / warning / error) and merge hints."
+    ),
+)
+class RepeatedQueryCheck(Check):
+    """Detect repeated SQL queries within a single BizRule.
+
+    Implements SPEC §8 SR032 as a substantial expansion of the legacy
+    ``check_repeated_queries`` (which only catched exact duplicates of
+    queries assembled into a variable and passed to ``getSqlData``).
+
+    Three tiers, most-specific first:
+
+    - **error (T1)**: same table, same SELECT fields, same WHERE
+      conjuncts → the second call is fully redundant.
+    - **warning (T2)**: same table, same WHERE, *different* SELECT
+      fields → merge into one query selecting the union of fields.
+    - **info (T3)**: same table, same SELECT, WHEREs differ only in
+      the literal-equality value of exactly one column → merge with
+      ``column IN (val1, val2)`` (and add the discriminating column
+      to the SELECT if the consumer needs to tell rows apart).
+
+    Both ``getSqlData(...)`` and ``getData(...)`` are query primitives
+    in this language; both are checked. The check sees the AST after
+    string concatenations have been flattened and after the rule's
+    intra-script string assignments have been substituted, so it
+    catches the legacy's many false negatives:
+
+    - inline ``getSqlData("select ...")`` calls
+    - string-concatenation builders (``"select ... " + idVal``)
+    - mixed-case ``SELECT``
+    - ``getData(...)`` calls
+    """
+
+    def visit_Script(self, node: Script) -> None:
+        assigns = collect_string_assignments(node)
+        sites: list[tuple[Call, ParsedQuery]] = []
+        for call in _walk_calls(node):
+            if not _is_query_call(call):
+                continue
+            if not call.args:
+                continue
+            sql = flatten_query_arg(call.args[0], assigns)
+            parsed = parse_query(sql)
+            if parsed is None:
+                continue
+            sites.append((call, parsed))
+
+        # Pairwise compare. Each later call is reported at most once
+        # (against its earliest match), so we mark "consumed" indices.
+        consumed: set[int] = set()
+        for j in range(1, len(sites)):
+            if j in consumed:
+                continue
+            for i in range(j):
+                tier = _classify_pair(sites[i][1], sites[j][1])
+                if tier is None:
+                    continue
+                consumed.add(j)
+                self._emit_tier(tier, sites[i][0], sites[j][0], sites[i][1], sites[j][1])
+                break
+
+    def _emit_tier(
+        self,
+        tier: str,
+        first_call: Call,
+        second_call: Call,
+        first: ParsedQuery,
+        second: ParsedQuery,
+    ) -> None:
+        if tier == "T1":
+            self.ctx.emit(
+                line=second_call.line,
+                severity="error",
+                message=(
+                    f"Duplicate query at lines {first_call.line} and "
+                    f"{second_call.line}: same table `{second.table}`, "
+                    f"same SELECT fields, same WHERE — the second call "
+                    f"is redundant"
+                ),
+            )
+        elif tier == "T2":
+            union = sorted(first.select_fields | second.select_fields)
+            self.ctx.emit(
+                line=second_call.line,
+                severity="warning",
+                message=(
+                    f"Near-duplicate query at lines {first_call.line} "
+                    f"and {second_call.line}: same table `{second.table}` "
+                    f"and WHERE, different SELECT fields — consider "
+                    f"merging into one query selecting "
+                    f"{', '.join(union)}"
+                ),
+            )
+        elif tier == "T3":
+            diff = _single_value_diff(first.where_conjuncts, second.where_conjuncts)
+            assert diff is not None  # _classify_pair already verified
+            col, v1, v2 = diff
+            self.ctx.emit(
+                line=second_call.line,
+                severity="info",
+                message=(
+                    f"Near-duplicate query at lines {first_call.line} "
+                    f"and {second_call.line}: same table `{second.table}` "
+                    f"and SELECT, WHERE differs only in `{col}` "
+                    f"({v1} vs {v2}) — consider merging with "
+                    f"`{col} IN ({v1}, {v2})` and adding `{col}` to "
+                    f"the SELECT"
+                ),
+            )
+
+
+def _walk_calls(root: Node):
+    if isinstance(root, Call):
+        yield root
+    for child in root.children():
+        yield from _walk_calls(child)
+
+
+def _is_query_call(call: Call) -> bool:
+    callee = call.callee
+    if not isinstance(callee, Identifier):
+        return False
+    return callee.name.lower() in _QUERY_FUNCTIONS
+
+
+def _classify_pair(a: ParsedQuery, b: ParsedQuery) -> str | None:
+    """Return the tier label of the strongest match between ``a`` and
+    ``b``, or ``None`` if they are not similar enough to flag.
+
+    Most-specific first: T1 wins over T2 wins over T3.
+    """
+    if a.table != b.table:
+        return None
+    same_select = a.select_fields == b.select_fields
+    same_where = a.where_conjuncts == b.where_conjuncts
+    if same_select and same_where:
+        return "T1"
+    if same_where and not same_select:
+        return "T2"
+    if same_select and not same_where:
+        if _single_value_diff(a.where_conjuncts, b.where_conjuncts) is not None:
+            return "T3"
+    return None
+
+
+def _single_value_diff(
+    a: tuple[Conjunct, ...], b: tuple[Conjunct, ...]
+) -> tuple[str, str, str] | None:
+    """If ``a`` and ``b`` differ in exactly one ``=`` conjunct on the
+    same column, return ``(column, value_a, value_b)``. Otherwise
+    ``None``.
+    """
+    if len(a) != len(b) or len(a) == 0:
+        return None
+    diffs: list[tuple[Conjunct, Conjunct]] = []
+    # Conjuncts are sorted by (column, op, value) inside parse_query;
+    # walk both in lockstep, recording mismatches.
+    matched_b: set[int] = set()
+    a_unmatched: list[Conjunct] = []
+    for ca in a:
+        for k, cb in enumerate(b):
+            if k in matched_b:
+                continue
+            if ca == cb:
+                matched_b.add(k)
+                break
+        else:
+            a_unmatched.append(ca)
+    b_unmatched = [cb for k, cb in enumerate(b) if k not in matched_b]
+    if len(a_unmatched) != 1 or len(b_unmatched) != 1:
+        return None
+    ca, cb = a_unmatched[0], b_unmatched[0]
+    if ca.column != cb.column:
+        return None
+    if ca.op != "=" or cb.op != "=":
+        return None
+    if ca.value == cb.value:
+        return None
+    return (ca.column, ca.value, cb.value)
+

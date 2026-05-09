@@ -248,11 +248,13 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | SR021   | `check_dead_code`             | `DeadCodeCheck`       | done    | yes (subset of legacy; legacy over-reports on comments/strings/if-else — see `tests/test_checks_logic.py`) |
 | SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
 | SR031   | `check_nested_loops`          | `NestedLoopCheck` [^sr031] | done    | yes (subset; legacy over-reports on comments/strings/do-while/brace-desync — see `tests/test_checks_performance.py`) |
-| SR032   | `check_repeated_queries`      | `RepeatedQueryCheck`  | pending | —                |
+| SR032   | `check_repeated_queries`      | `RepeatedQueryCheck` [^sr032] | done    | n/a (intentionally reformulated — three-tier severity grading and pattern detection; legacy was a strict subset; divergence cases asserted in `tests/test_checks_performance.py`) |
 | SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | done    | yes (subset; legacy under-reports — only first log per loop — and over-reports inside comments / strings / after the loop closes — see `tests/test_checks_logs.py`) |
 | SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | done    | n/a (intentionally reformulated — the AST rule talks about log density vs. branch/loop/risky-call complexity, not physical line count; divergence cases asserted in `tests/test_checks_logs.py`) |
 
 [^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
+
+[^sr032]: `RepeatedQueryCheck` grades severity by similarity tier across both query primitives (`getSqlData`, `getData`): **error (T1)** for exact duplicate queries (same table, SELECT, WHERE); **warning (T2)** for same table + WHERE with different SELECT fields (suggested fix: union the SELECT); **info (T3)** for same table + SELECT whose WHEREs differ only in exactly one column's literal-equality value (suggested fix: merge with `column IN (val1, val2)`). The check sees flattened SQL strings — string-concatenation builders and one-shot variable assignments are resolved before comparison — so it catches inline calls, mixed-case keywords, and `getData(...)` calls that the legacy regex missed.
 
 [^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
 

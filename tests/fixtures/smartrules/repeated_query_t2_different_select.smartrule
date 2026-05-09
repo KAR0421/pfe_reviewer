@@ -1,0 +1,4 @@
+// SR032 T2: same table, same WHERE, different SELECT fields →
+// tier 2 warning. Suggested fix: merge selecting both fields.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rowsB := getSqlData("SELECT name FROM mxthing WHERE code = 'A'");

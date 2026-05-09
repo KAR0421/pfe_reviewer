@@ -1,0 +1,3 @@
+// SR032 negative: queries against different tables must not fire.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rowsB := getSqlData("SELECT id FROM mxother WHERE code = 'A'");

@@ -1,0 +1,4 @@
+// SR032 negative: WHEREs differ in *two* columns, not one — the T3
+// merge hint does not apply, and tiers T1 / T2 also do not match.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A' AND status = 1");
+rowsB := getSqlData("SELECT id FROM mxthing WHERE code = 'B' AND status = 2");

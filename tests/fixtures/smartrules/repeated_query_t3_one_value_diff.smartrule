@@ -1,0 +1,5 @@
+// SR032 T3: same table, same SELECT fields, WHEREs differ in exactly
+// one column's literal-equality value → tier 3 info. Suggested fix:
+// merge with `code IN ('A', 'B')`.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rowsB := getSqlData("SELECT id FROM mxthing WHERE code = 'B'");

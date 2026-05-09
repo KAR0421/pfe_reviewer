@@ -1,0 +1,6 @@
+// SR032 AST-improvement: getData(...) is also a query primitive in
+// this language. The legacy regex hardcoded `getSqlData`, so two
+// identical getData calls slipped through. The AST recognises both
+// query functions.
+rowsA := getData("SELECT id FROM mxthing WHERE code = 'A'");
+rowsB := getData("SELECT id FROM mxthing WHERE code = 'A'");

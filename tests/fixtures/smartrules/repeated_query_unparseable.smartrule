@@ -1,0 +1,6 @@
+// SR032 contract: queries that are not recognizable single SELECT
+// statements (DML, malformed text, multi-statement) cannot be
+// meaningfully compared. The check silently skips them — it must not
+// crash and must not report them as duplicates of one another.
+junk1 := getSqlData("not valid sql at all just random text");
+junk2 := getSqlData("update mxthing set status = 1 where code = 'A'");

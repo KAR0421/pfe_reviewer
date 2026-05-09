@@ -1,0 +1,5 @@
+// SR032 negative: WHEREs differ on the same column but with different
+// operators (= vs !=). The T3 merge hint requires equality on both
+// sides; this is a real semantic difference, not a redundancy.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A'");
+rowsB := getSqlData("SELECT id FROM mxthing WHERE code != 'A'");
