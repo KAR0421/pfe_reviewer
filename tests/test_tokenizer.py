@@ -13,7 +13,8 @@ from reviewer.ast.tokens import Token, TokenKind
 
 
 def kinds(src: str) -> list[TokenKind]:
-    return [t.kind for t in tokenize(src)]
+    toks, _ = tokenize(src)
+    return [t.kind for t in toks]
 
 
 # ── Operators & punctuation ──────────────────────────────────────────
@@ -46,14 +47,14 @@ def kinds(src: str) -> list[TokenKind]:
     ],
 )
 def test_single_operator_token(src: str, expected: TokenKind) -> None:
-    toks = tokenize(src)
+    toks, _ = tokenize(src)
     assert toks[0].kind is expected
     assert toks[-1].kind is TokenKind.EOF
 
 
 def test_assignment_vs_equality_distinguished() -> None:
     # `:=` vs `=` must not collapse.
-    toks = tokenize("x := y = z")
+    toks, _ = tokenize("x := y = z")
     assert [t.kind for t in toks[:-1]] == [
         TokenKind.IDENT,
         TokenKind.OP_ASSIGN,
@@ -64,7 +65,7 @@ def test_assignment_vs_equality_distinguished() -> None:
 
 
 def test_comparison_operators_longest_match() -> None:
-    toks = tokenize("a <= b >= c != d < e > f")
+    toks, _ = tokenize("a <= b >= c != d < e > f")
     assert [t.kind for t in toks[:-1]] == [
         TokenKind.IDENT, TokenKind.OP_LE,
         TokenKind.IDENT, TokenKind.OP_GE,
@@ -99,14 +100,14 @@ def test_comparison_operators_longest_match() -> None:
 )
 def test_keywords_case_insensitive(kw: str, kind: TokenKind) -> None:
     for variant in (kw, kw.upper(), kw.title()):
-        toks = tokenize(variant)
+        toks, _ = tokenize(variant)
         assert toks[0].kind is kind, f"{variant} should match {kind}"
         # Original casing is preserved in token value.
         assert toks[0].value == variant
 
 
 def test_identifier_preserves_case() -> None:
-    toks = tokenize("Contrib contrib")
+    toks, _ = tokenize("Contrib contrib")
     assert toks[0].kind is TokenKind.IDENT
     assert toks[0].value == "Contrib"
     assert toks[1].value == "contrib"
@@ -116,13 +117,13 @@ def test_identifier_preserves_case() -> None:
 
 
 def test_integer_number() -> None:
-    toks = tokenize("42")
+    toks, _ = tokenize("42")
     assert toks[0].kind is TokenKind.NUMBER
     assert toks[0].value == "42"
 
 
 def test_decimal_number() -> None:
-    toks = tokenize("3.14")
+    toks, _ = tokenize("3.14")
     assert toks[0].kind is TokenKind.NUMBER
     assert toks[0].value == "3.14"
 
@@ -131,26 +132,26 @@ def test_decimal_number() -> None:
 
 
 def test_double_quoted_string() -> None:
-    toks = tokenize('"hello"')
+    toks, _ = tokenize('"hello"')
     assert toks[0].kind is TokenKind.STRING
     assert toks[0].value == "hello"
 
 
 def test_single_quoted_string() -> None:
-    toks = tokenize("'world'")
+    toks, _ = tokenize("'world'")
     assert toks[0].kind is TokenKind.STRING
     assert toks[0].value == "world"
 
 
 def test_string_containing_comment_marker_is_not_a_comment() -> None:
-    toks = tokenize('"// not a comment"')
+    toks, _ = tokenize('"// not a comment"')
     assert toks[0].kind is TokenKind.STRING
     assert toks[0].value == "// not a comment"
     assert toks[1].kind is TokenKind.EOF
 
 
 def test_string_containing_keywords_stays_string() -> None:
-    toks = tokenize('"if while return foreach"')
+    toks, _ = tokenize('"if while return foreach"')
     assert toks[0].kind is TokenKind.STRING
     assert toks[0].value == "if while return foreach"
 
@@ -159,12 +160,12 @@ def test_string_containing_keywords_stays_string() -> None:
 
 
 def test_full_line_comment_is_discarded() -> None:
-    toks = tokenize("// just a comment\n")
+    toks, _ = tokenize("// just a comment\n")
     assert [t.kind for t in toks] == [TokenKind.EOF]
 
 
 def test_end_of_line_comment_is_discarded() -> None:
-    toks = tokenize("x := 1; // trailing\n")
+    toks, _ = tokenize("x := 1; // trailing\n")
     assert [t.kind for t in toks[:-1]] == [
         TokenKind.IDENT,
         TokenKind.OP_ASSIGN,
@@ -175,7 +176,7 @@ def test_end_of_line_comment_is_discarded() -> None:
 
 def test_comment_between_statements() -> None:
     src = "a := 1;\n// note\nb := 2;"
-    toks = tokenize(src)
+    toks, _ = tokenize(src)
     assert [t.kind for t in toks[:-1]] == [
         TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
         TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
@@ -187,7 +188,7 @@ def test_comment_between_statements() -> None:
 
 def test_line_column_accuracy_multiline() -> None:
     src = "a := 1;\n  b := 2;"
-    toks = tokenize(src)
+    toks, _ = tokenize(src)
     a, _, one, _, b, _, two, *_ = toks
     assert (a.line, a.col) == (1, 1)
     assert (one.line, one.col) == (1, 6)
@@ -206,7 +207,7 @@ def test_unterminated_string_raises_at_open_quote() -> None:
 
 
 def test_empty_input_yields_only_eof() -> None:
-    toks = tokenize("")
+    toks, _ = tokenize("")
     assert len(toks) == 1
     assert toks[0].kind is TokenKind.EOF
     assert (toks[0].line, toks[0].col) == (1, 1)
@@ -214,7 +215,7 @@ def test_empty_input_yields_only_eof() -> None:
 
 def test_mixed_whitespace_is_skipped() -> None:
     # Spaces, tabs, CRs, and newlines around a single token.
-    toks = tokenize("  \t\r\n  \t x \r\n\t  ")
+    toks, _ = tokenize("  \t\r\n  \t x \r\n\t  ")
     assert [t.kind for t in toks] == [TokenKind.IDENT, TokenKind.EOF]
     assert toks[0].value == "x"
     # `x` sits on the second logical line after the leading newline.
@@ -244,7 +245,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "smartrules"
 )
 def test_tokenize_real_fixture(fixture_name: str) -> None:
     src = (FIXTURES / fixture_name).read_text(encoding="utf-8")
-    toks = tokenize(src)
+    toks, _ = tokenize(src)
     assert toks[-1].kind is TokenKind.EOF
     # Sanity: real scripts produce many tokens.
     assert len(toks) > 50

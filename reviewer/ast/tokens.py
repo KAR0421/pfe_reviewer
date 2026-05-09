@@ -96,3 +96,22 @@ class Token:
     value: str
     line: int
     col: int
+
+
+@dataclass(frozen=True)
+class CommentToken:
+    """A ``// ...`` comment captured on the side channel.
+
+    Comments are stripped from the main token stream so the parser
+    never sees them, but the tokenizer hands them back to the runner
+    so checks that care about documentation/intent can read them via
+    ``CheckContext.comments``.
+
+    ``text`` is the comment body with the leading ``//`` removed and
+    surrounding whitespace stripped. ``line`` / ``col`` point at the
+    ``/`` of the opening ``//`` (1-based).
+    """
+
+    text: str
+    line: int
+    col: int

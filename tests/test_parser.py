@@ -35,7 +35,8 @@ from reviewer.ast.tokenizer import tokenize
 
 
 def parse(src: str) -> Script:
-    return Parser(tokenize(src)).parse_script()
+    tokens, _ = tokenize(src)
+    return Parser(tokens).parse_script()
 
 
 # ── Assignment ──────────────────────────────────────────────────────

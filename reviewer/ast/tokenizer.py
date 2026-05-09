@@ -1,7 +1,7 @@
 """Tokenizer: source string -> list[Token] for the BizRule scripting language."""
 from __future__ import annotations
 
-from .tokens import KEYWORDS, Token, TokenKind
+from .tokens import KEYWORDS, CommentToken, Token, TokenKind
 
 
 class TokenizeError(Exception):
@@ -14,9 +14,17 @@ class TokenizeError(Exception):
         super().__init__(f"TokenizeError at {line}:{col}: {message}")
 
 
-def tokenize(source: str) -> list[Token]:
-    """Tokenize *source* into a list of tokens ending with EOF."""
+def tokenize(source: str) -> tuple[list[Token], list[CommentToken]]:
+    """Tokenize *source* into ``(tokens, comments)``.
+
+    The main token stream ends with an ``EOF`` token and contains no
+    ``COMMENT`` tokens — the parser never sees comments. Comments are
+    captured on the side channel as ``CommentToken`` instances so
+    documentation-aware checks can read them via
+    ``CheckContext.comments``.
+    """
     tokens: list[Token] = []
+    comments: list[CommentToken] = []
     pos = 0
     line = 1
     col = 1
@@ -39,9 +47,21 @@ def tokenize(source: str) -> list[Token]:
 
         # --- Comments (// until end of line) ---
         if ch == "/" and pos + 1 < length and source[pos + 1] == "/":
+            start_line = line
+            start_col = col
             pos += 2
+            col += 2
+            text_start = pos
             while pos < length and source[pos] != "\n":
                 pos += 1
+                col += 1
+            comments.append(
+                CommentToken(
+                    text=source[text_start:pos].strip(),
+                    line=start_line,
+                    col=start_col,
+                )
+            )
             # newline itself will be consumed on next iteration
             continue
 
@@ -128,7 +148,7 @@ def tokenize(source: str) -> list[Token]:
         raise TokenizeError(line, col, f"Unexpected character: {ch!r}")
 
     tokens.append(Token(TokenKind.EOF, "", line, col))
-    return tokens
+    return tokens, comments
 
 
 # ── Helpers ──────────────────────────────────────────────────────────

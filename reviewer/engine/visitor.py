@@ -18,6 +18,7 @@ from ..ast.nodes import (
     TryStmt,
     WhileStmt,
 )
+from ..ast.tokens import CommentToken
 from .finding import Finding
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -33,8 +34,18 @@ LOOP_TYPES: tuple[type, ...] = (
 class CheckContext:
     """Ambient state shared by every check during a single review."""
 
-    def __init__(self, bizrule) -> None:
+    def __init__(
+        self,
+        bizrule,
+        comments: list[CommentToken] | None = None,
+    ) -> None:
         self.bizrule = bizrule
+        # Side-channel comment list captured by the tokenizer. Checks
+        # that care about documentation/intent (e.g. SR010 missing
+        # docstring) can read these via ``self.ctx.comments``. The
+        # default empty list keeps existing call sites that don't pass
+        # comments working unchanged.
+        self.comments: list[CommentToken] = comments or []
         self._loop_stack: list[Node] = []
         self._try_stack: list[TryStmt] = []
         self.findings: list[Finding] = []

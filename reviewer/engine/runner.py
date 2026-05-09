@@ -26,7 +26,7 @@ from .. import checks  # noqa: F401  (registers checks on import)
 def run_review(br) -> Report:
     """Tokenize, parse, and walk a BizRule, returning a Report."""
     try:
-        tokens = tokenize(br.script)
+        tokens, comments = tokenize(br.script)
         tree = Parser(tokens).parse_script()
     except (TokenizeError, ParseError) as e:
         return Report(
@@ -43,7 +43,7 @@ def run_review(br) -> Report:
             ),
         )
 
-    ctx = CheckContext(bizrule=br)
+    ctx = CheckContext(bizrule=br, comments=comments)
     check_instances: list[Check] = [cls(ctx) for cls in CHECKS]
     _walk(tree, ctx, check_instances)
     return Report(rule_name=br.name, findings=tuple(ctx.findings))
