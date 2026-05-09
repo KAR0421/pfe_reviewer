@@ -1,0 +1,4 @@
+// Negative: log call sits at the top level, no loop.
+x := 1;
+msginfo("ok");
+y := 2;

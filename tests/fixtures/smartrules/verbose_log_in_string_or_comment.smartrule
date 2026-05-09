@@ -1,0 +1,6 @@
+// Edge: loop keyword in comment, log keyword in string. Legacy flips
+// `inside_loop` on the comment line and then matches the string in the
+// next assignment. AST sees neither.
+// foreach x in xs do
+msg := "msginfo(";
+y := 2;

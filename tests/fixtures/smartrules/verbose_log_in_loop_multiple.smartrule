@@ -1,0 +1,8 @@
+// AST-only: legacy "warns once per loop" so it sees only line 4.
+// AST flags every log call site.
+foreach item in items do
+{
+  msginfo("a");
+  msgerror("b");
+  msgwarn("c");
+}

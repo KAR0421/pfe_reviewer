@@ -1,0 +1,8 @@
+// AST-only: loop closes on line 4; the msginfo on line 6 is NOT
+// inside any loop. Legacy never clears `inside_loop`, so it (wrongly)
+// flags the msginfo as in-loop.
+foreach item in items do
+{
+  x := 1;
+}
+msginfo("done");

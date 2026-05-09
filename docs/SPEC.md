@@ -194,7 +194,7 @@ stable; pick the next free ID when adding a new check.
 | ID    | Severity | Description |
 |-------|----------|-------------|
 | SR090 | warning  | Verbose log call inside a loop. |
-| SR091 | info     | Long script (>50 lines) with fewer than 3 log calls. |
+| SR091 | info     | Long script with insufficient log density relative to its branching / loop / risky-call complexity. [^sr091] |
 | SR092 | info     | Log call emits only a constant string (no key values). |
 
 ### Nice to Have — bonus
@@ -247,12 +247,14 @@ pack fixture, `reviewer_legacy.py` is deleted.
 | SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
 | SR031   | `check_nested_loops`          | `NestedLoopCheck` [^sr031] | done    | yes (subset; legacy over-reports on comments/strings/do-while/brace-desync — see `tests/test_checks_performance.py`) |
 | SR032   | `check_repeated_queries`      | `RepeatedQueryCheck`  | pending | —                |
-| SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | pending | —         |
-| SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | pending | —         |
+| SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | done    | yes (subset; legacy under-reports — only first log per loop — and over-reports inside comments / strings / after the loop closes — see `tests/test_checks_logs.py`) |
+| SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | done    | n/a (intentionally reformulated — the AST rule talks about log density vs. branch/loop/risky-call complexity, not physical line count; divergence cases asserted in `tests/test_checks_logs.py`) |
 
 [^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
 
 [^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
+
+[^sr091]: `TooFewLogsCheck` is a deliberate reformulation of the legacy heuristic (`len(lines) > 50 and num_logs < 3`). A script with high branching and risky operations (SQL / service / live-object lookups) but no logs is unobservable in production; a long but straight-line script with no branches needs no logs to debug. The AST rule fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire.
 
 New AST-native checks (no legacy counterpart, add directly in the new pipeline):
 

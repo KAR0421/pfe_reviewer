@@ -1,0 +1,5 @@
+// Positive: msginfo inside foreach loop.
+foreach item in items do
+{
+  msginfo("processing " + item.NAME);
+}
