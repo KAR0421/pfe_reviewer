@@ -183,6 +183,64 @@ def test_comment_between_statements() -> None:
     ]
 
 
+# ── Block comments (/* ... */) ──────────────────────────────────────
+
+
+def test_single_line_block_comment_is_discarded_and_captured() -> None:
+    toks, comments = tokenize("/* hello */")
+    assert [t.kind for t in toks] == [TokenKind.EOF]
+    assert len(comments) == 1
+    assert comments[0].text == "hello"
+    assert (comments[0].line, comments[0].col) == (1, 1)
+
+
+def test_multiline_block_comment_position_at_open() -> None:
+    src = "x := 1;\n  /* first line\n     second */\ny := 2;"
+    toks, comments = tokenize(src)
+    # Token stream should contain only the two assignments.
+    assert [t.kind for t in toks[:-1]] == [
+        TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
+        TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
+    ]
+    # Line/col of the CommentToken points at the `/*` opener.
+    assert len(comments) == 1
+    assert (comments[0].line, comments[0].col) == (2, 3)
+    # Line counters advanced through the embedded newline: `y := 2;`
+    # must be on line 4.
+    y_token = toks[4]
+    assert y_token.value == "y"
+    assert y_token.line == 4
+
+
+def test_block_comment_between_statements_emits_nothing() -> None:
+    src = "a := 1; /* between */ b := 2;"
+    toks, comments = tokenize(src)
+    assert [t.kind for t in toks[:-1]] == [
+        TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
+        TokenKind.IDENT, TokenKind.OP_ASSIGN, TokenKind.NUMBER, TokenKind.SEMI,
+    ]
+    assert len(comments) == 1
+    assert comments[0].text == "between"
+
+
+def test_string_with_block_comment_marker_stays_string() -> None:
+    """``/* ... */`` inside a string literal is just text — the
+    string-tokenizer owns those characters until the closing quote.
+    """
+    toks, comments = tokenize('"/* not a comment */"')
+    assert toks[0].kind is TokenKind.STRING
+    assert toks[0].value == "/* not a comment */"
+    assert comments == []
+
+
+def test_unterminated_block_comment_raises_at_open() -> None:
+    with pytest.raises(TokenizeError) as exc:
+        tokenize("  /* hello")
+    assert exc.value.line == 1
+    assert exc.value.col == 3
+    assert "block comment" in exc.value.message.lower()
+
+
 # ── Line / column accuracy ──────────────────────────────────────────
 
 

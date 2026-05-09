@@ -65,6 +65,48 @@ def tokenize(source: str) -> tuple[list[Token], list[CommentToken]]:
             # newline itself will be consumed on next iteration
             continue
 
+        # --- Block comments (/* ... */) ---
+        # Spans lines; line/col counters must advance through embedded
+        # newlines. ``/*`` inside a string literal is handled by the
+        # string branch below — we only reach here outside strings.
+        if ch == "/" and pos + 1 < length and source[pos + 1] == "*":
+            start_line = line
+            start_col = col
+            pos += 2
+            col += 2
+            text_start = pos
+            closed = False
+            while pos < length:
+                if (
+                    source[pos] == "*"
+                    and pos + 1 < length
+                    and source[pos + 1] == "/"
+                ):
+                    text_end = pos
+                    pos += 2
+                    col += 2
+                    closed = True
+                    break
+                if source[pos] == "\n":
+                    pos += 1
+                    line += 1
+                    col = 1
+                else:
+                    pos += 1
+                    col += 1
+            if not closed:
+                raise TokenizeError(
+                    start_line, start_col, "unterminated block comment"
+                )
+            comments.append(
+                CommentToken(
+                    text=source[text_start:text_end].strip(),
+                    line=start_line,
+                    col=start_col,
+                )
+            )
+            continue
+
         # --- String literals ---
         if ch in ('"', "'"):
             tok, pos, line, col = _read_string(source, pos, line, col)

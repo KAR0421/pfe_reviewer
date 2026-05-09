@@ -53,6 +53,18 @@ def test_simple_assignment() -> None:
     assert stmt.line == 1
 
 
+def test_block_comment_in_middle_of_expression_parses() -> None:
+    """``/* ... */`` is invisible to the parser — it sits between
+    tokens just like whitespace. ``x := /* hi */ 1;`` must parse as
+    a normal assignment.
+    """
+    script = parse("x := /* hi */ 1;")
+    assert len(script.statements) == 1
+    stmt = script.statements[0]
+    assert isinstance(stmt, AssignStmt)
+    assert isinstance(stmt.value, NumberLit) and stmt.value.value == 1
+
+
 def test_conditional_assignment_op() -> None:
     script = parse("x ?= 1;")
     stmt = script.statements[0]
