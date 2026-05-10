@@ -1,0 +1,7 @@
+// SR033 silent edge: condition is a bare function call. ``cond_vars``
+// is empty (no Identifier or FieldAccess outside the call's name
+// position), so the check has no signal and stays silent.
+while (getStatus())
+{
+    work();
+}

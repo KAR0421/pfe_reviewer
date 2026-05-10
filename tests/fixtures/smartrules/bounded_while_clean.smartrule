@@ -1,0 +1,8 @@
+// SR033 negative: a textbook bounded while loop. ``i`` is in the
+// condition AND assigned in the body, so the disjoint check finds an
+// overlap and stays silent.
+i := 0;
+while (i < 10)
+{
+    i := i + 1;
+}

@@ -1,0 +1,10 @@
+// SR033 negative: condition references ``obj.READY`` and ``i``;
+// the body reassigns ``obj.READY`` (field) and ``i`` (leaf). The
+// overlap on either name keeps the check silent.
+obj := getObject("MxThing", "ID42");
+i := 0;
+while (obj.READY = 0 and i < 5)
+{
+    obj.READY := 1;
+    i := i + 1;
+}

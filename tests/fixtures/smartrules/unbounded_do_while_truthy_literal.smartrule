@@ -1,0 +1,5 @@
+// SR033 trivial-infinite: do-while with non-empty string literal.
+do
+{
+    log("step");
+} while ("yes");

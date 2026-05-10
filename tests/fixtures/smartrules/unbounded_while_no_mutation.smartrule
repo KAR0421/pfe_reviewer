@@ -1,0 +1,9 @@
+// SR033 unbounded condition: ``i`` and ``n`` appear in the condition
+// but the body never assigns either of them. The function call inside
+// the body does NOT count as a mutation in this language.
+i := 0;
+n := getCount();
+while (i < n)
+{
+    process(i);
+}

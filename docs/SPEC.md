@@ -132,7 +132,7 @@ stable; pick the next free ID when adding a new check.
 | SR030 | error    | SQL query (`getSqlData`) executed inside a loop. | done |
 | SR031 | warning  | Nested loops (two or more levels). [^sr031] | done |
 | SR032 | warning  | Duplicate / near-duplicate queries in the same rule. [^sr032] | done |
-| SR033 | warning  | Unbounded or trivially infinite loop. | pending |
+| SR033 | warning  | Unbounded or trivially infinite loop. [^sr033] | done |
 | SR034 | info     | Repeated reads of the same field on the same object without intervening reassignment (e.g. `x := obj.F; y := obj.F;` — caching `obj.F` once would be cleaner). | pending |
 
 #### Security & robustness
@@ -141,7 +141,7 @@ stable; pick the next free ID when adding a new check.
 | SR040 | error    | Hardcoded business-sensitive literal (ID, threshold, name, label, file path, magic number). An agent reviews each non-trivial literal in context to decide whether it should be parameterized. | agentic |
 | SR041 | error    | Division where the right operand could be zero. | pending |
 | SR042 | warning  | Field access on a value that has not been guarded against null or empty. The check tracks both `if (obj != null) { ...obj.F... }` (then-branch guard) and `if (obj = null) { ... } else { ...obj.F... }` (else-branch guard) — guard tracking is structural via the engine's branch awareness. | pending |
-| SR043 | warning  | Risky call (`getSqlData`, `callService`, `getObjects`, `obj.set`, `obj.method(...)`) not wrapped in a `try { } onerror { }` block. | pending |
+| SR043 | warning  | Risky call (`getSqlData`, `callService`, `getObjects`, `obj.set`, `obj.method(...)`) not wrapped in a `try { } onerror { }` block. [^sr043] | should-have |
 | SR044 | warning  | Dynamic SQL string passed to `getSqlData` / `getData` (SQL-injection shape). Fires on `getSqlData(queryStr)` where `queryStr` is computed elsewhere, or on concatenations whose non-literal pieces sit in structural positions (e.g. `"SELECT * FROM " + tableName + " WHERE ..."`). [^sr044] | pending |
 
 #### Dependencies
@@ -215,23 +215,21 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR043 — unwrapped risky call
-2. SR033 — unbounded / infinite loop
-3. SR059 — unused variable
-4. SR093 — empty onerror block
-5. SR094 — onerror without error context
-6. SR057 — case-typo variables
-7. SR034 — repeated field reads
-8. SR044 — dynamic SQL
-9. SR055 — array alias
-10. SR058 — unintended record auto-create
-11. SR011 — missing SMARTRULE_NAME
-12. SR060 — empty/malformed SMARTRULE_TRIGGER
-13. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
-14. SR062 — TRIGGER_TYPE not in valid enum set
-15. SR042 — guarded field access (flow analysis)
-16. SR041 — div by zero (flow analysis)
-17. SR002 — RULE_CODE convention regex (config-driven)
+1. SR059 — unused variable
+2. SR093 — empty onerror block
+3. SR094 — onerror without error context
+4. SR057 — case-typo variables
+5. SR034 — repeated field reads
+6. SR044 — dynamic SQL
+7. SR055 — array alias
+8. SR058 — unintended record auto-create
+9. SR011 — missing SMARTRULE_NAME
+10. SR060 — empty/malformed SMARTRULE_TRIGGER
+11. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
+12. SR062 — TRIGGER_TYPE not in valid enum set
+13. SR042 — guarded field access (flow analysis)
+14. SR041 — div by zero (flow analysis)
+15. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -251,16 +249,17 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, nine
-  checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR090,
-  SR091), full test suite green.
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, ten
+  checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR033,
+  SR090, SR091), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR043, SR033, SR059,
-  SR093, SR094, SR057, SR034, SR044, SR055, SR058, SR011, SR060,
-  SR061-intra, SR062, SR042, SR041, SR002).
+  in the order documented in §6 "M2 build order" (SR059, SR093, SR094,
+  SR057, SR034, SR044, SR055, SR058, SR011, SR060, SR061-intra, SR062,
+  SR042, SR041, SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
-- **M4 — DB-connected and harder checks.** SR050, SR051, SR052, the
+- **M4 — DB-connected and harder checks.** SR043 (after redefining
+  which contexts warrant the warning), SR050, SR051, SR052, the
   DB-connected variant of SR061, return-type checks (SR070–SR072),
   version diff (SR080–SR082), SR022 (promoted out of M2), and SR092.
 - **M5 — Agentic checks and quality.** LLM-driven checks for the
@@ -281,6 +280,10 @@ comment + inline for `severity >= warning`).
 [^sr044]: Reuses `_sql.py`'s query-flattening helper to share a "literal vs dynamic" classification with SR030 and SR032. A query is considered literal if it's a `StringLit` or a concatenation of `StringLit`s and identifier substitutions only. Anything else (unflattenable expression, computed at runtime) is dynamic and fires.
 
 [^sr062]: Valid TRIGGER_TYPE integer values per `schema.xml`'s `RULE_TRIGGER_TYPE` simple type are: 10, 11, 12, 13, 14, 20, 21, 30, 31, 40, 50, 51, 60. Anything outside this set fires.
+
+[^sr043]: Deferred pending review of real-world BizRule contexts where missing try/onerror is genuinely problematic. The blanket form (every risky call must be wrapped) is too noisy for this codebase.
+
+[^sr033]: `UnboundedLoopCheck` visits `WhileStmt`, `DoWhile`, and `ForCStyle` only — `foreach` and counter-`for` are bounded by language design. Two firing paths: (1) **trivial-infinite** when the condition is a non-zero `NumberLit` or non-empty `StringLit` (or a C-style `for` with no condition); (2) **unbounded condition** when the set of identifier / field-access string-forms in the condition is disjoint from the set of `AssignStmt` targets in the body (and in the C-for step). Function and method calls in the body do *not* count as mutations — only `:=` and `?=` mutate. Function and method *names* in callee position are not collected as condition variables either. A condition with no extractable identifiers (e.g. `while (getStatus())`) is silent: no signal to reason about.
 
 ## 9. Open questions
 - Is there an authoritative list of valid object / class names the reviewer

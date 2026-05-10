@@ -320,3 +320,100 @@ def test_sr032_unparseable_queries_are_silently_skipped() -> None:
     assert _ast_sr032_findings(br) == []
     # No collateral crash from the check, either.
     assert all(f.rule_id != "SR998" for f in report.findings)
+
+
+# ────────────────────────────────────────────────────────────────────
+# SR033 UnboundedLoopCheck
+# ────────────────────────────────────────────────────────────────────
+
+
+def _ast_sr033_findings(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR033"]
+
+
+# ── SR033 Positive: trivial-infinite literal ───────────────────────
+
+
+def test_sr033_while_truthy_literal_fires() -> None:
+    br = _load("unbounded_while_truthy_literal.smartrule")
+    findings = _ast_sr033_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 3  # the ``while (1)`` keyword line
+    assert f.severity == "warning"
+    assert f.category == "performance"
+    assert "truthy literal" in f.message
+
+
+def test_sr033_do_while_truthy_string_literal_fires() -> None:
+    br = _load("unbounded_do_while_truthy_literal.smartrule")
+    findings = _ast_sr033_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    # ``do`` keyword sits on line 2.
+    assert f.line == 2
+    assert "truthy literal" in f.message
+
+
+# ── SR033 Positive: unbounded condition ────────────────────────────
+
+
+def test_sr033_while_no_mutation_fires_with_var_names() -> None:
+    br = _load("unbounded_while_no_mutation.smartrule")
+    findings = _ast_sr033_findings(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 6  # the ``while`` keyword line
+    # Both condition vars must appear in the message.
+    assert "i" in f.message
+    assert "n" in f.message
+    assert "not modified" in f.message
+
+
+# ── SR033 Negative ─────────────────────────────────────────────────
+
+
+def test_sr033_bounded_while_silent() -> None:
+    br = _load("bounded_while_clean.smartrule")
+    assert _ast_sr033_findings(br) == []
+
+
+def test_sr033_field_assignment_overlap_silent() -> None:
+    """Body assigns ``obj.READY`` and ``i``; condition references
+    both. Either overlap alone is enough to keep the check silent."""
+    br = _load("bounded_while_field_assignment.smartrule")
+    assert _ast_sr033_findings(br) == []
+
+
+# ── SR033 Edge: comments and string literals ───────────────────────
+
+
+def test_sr033_ignores_loops_inside_strings_and_comments() -> None:
+    br = _load("unbounded_loop_in_string_or_comment.smartrule")
+    assert _ast_sr033_findings(br) == []
+
+
+# ── SR033 Boundary tests ───────────────────────────────────────────
+
+
+def test_sr033_boundary_zero_literal_silent() -> None:
+    """``while (0)`` is exactly one unit on the safe side of the
+    truthy-literal boundary: 0 is the only NumberLit value treated
+    as falsy. The condition has no extractable identifiers either,
+    so the disjoint path also short-circuits — net silent."""
+    br = _load("unbounded_while_zero_literal.smartrule")
+    assert _ast_sr033_findings(br) == []
+
+
+def test_sr033_boundary_one_literal_fires() -> None:
+    """One unit past the boundary on the firing side: ``while (1)``."""
+    br = _load("unbounded_while_truthy_literal.smartrule")
+    assert len(_ast_sr033_findings(br)) == 1
+
+
+def test_sr033_call_only_condition_silent() -> None:
+    """``while (getStatus())`` has no Identifier / FieldAccess outside
+    the callee position, so the disjoint-set path has no signal and
+    must NOT fire. Avoids a false positive on call-driven loops."""
+    br = _load("unbounded_while_call_condition.smartrule")
+    assert _ast_sr033_findings(br) == []

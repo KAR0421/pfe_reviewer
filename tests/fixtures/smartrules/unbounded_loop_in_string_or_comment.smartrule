@@ -1,0 +1,6 @@
+// SR033 edge: the offending shapes appear inside a string and a
+// comment. The tokenizer drops the comment and treats the string as
+// one opaque token, so the AST has no real ``while (1)`` here.
+// while (1) { x := x + 1; }
+msg := "while (1) { do nothing forever }";
+log(msg);

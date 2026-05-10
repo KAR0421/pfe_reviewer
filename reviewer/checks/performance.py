@@ -2,13 +2,16 @@
 from __future__ import annotations
 
 from ..ast.nodes import (
+    AssignStmt,
     Call,
+    Expr,
     FieldAccess,
     ForCounter,
     Identifier,
     Node,
     NumberLit,
     Script,
+    StringLit,
 )
 from ..engine.registry import register_check
 from ..engine.visitor import Check
@@ -384,4 +387,166 @@ def _single_value_diff(
     if ca.value == cb.value:
         return None
     return (ca.column, ca.value, cb.value)
+
+
+# ── SR033 UnboundedLoopCheck ───────────────────────────────────────
+
+
+@register_check(
+    rule_id="SR033",
+    category="performance",
+    severity="warning",
+    description="Unbounded or trivially infinite loop",
+)
+class UnboundedLoopCheck(Check):
+    """Flag while / do-while / C-style for loops that cannot be shown
+    to terminate.
+
+    Implements SPEC §6 SR033. Two firing paths, both conservative:
+
+    - **Trivially infinite**: the condition is a truthy literal —
+      a non-zero ``NumberLit`` or a non-empty ``StringLit``. C-style
+      ``for`` with a missing condition (``for ( ; ; )``) is treated
+      the same way.
+    - **Unbounded condition**: the set of identifier / field-access
+      string-forms appearing in the condition is *disjoint* from the
+      set of assignment targets in the loop body (and in the C-for
+      step). Function and method calls in the body do **not** count
+      as mutations — in this language, only ``:=`` and ``?=`` mutate
+      a variable.
+
+    ``foreach`` and counter-``for`` (``for X := a to b do``) are
+    bounded by the language and are not visited.
+
+    A condition with no extractable identifiers (e.g.
+    ``while (getStatus())``) is silent — there is no signal to reason
+    about and firing would be a false positive.
+    """
+
+    def visit_WhileStmt(self, node) -> None:
+        self._check(node, node.cond, (node.body,))
+
+    def visit_DoWhile(self, node) -> None:
+        self._check(node, node.cond, (node.body,))
+
+    def visit_ForCStyle(self, node) -> None:
+        if node.cond is None:
+            self.ctx.emit(
+                line=node.line,
+                message="C-style for has no termination condition",
+            )
+            return
+        scopes = (node.body,) if node.step is None else (node.body, node.step)
+        self._check(node, node.cond, scopes)
+
+    def _check(
+        self,
+        loop_node: Node,
+        cond: Expr,
+        body_scopes: tuple[Node, ...],
+    ) -> None:
+        if _is_truthy_literal(cond):
+            self.ctx.emit(
+                line=loop_node.line,
+                message="loop condition is a truthy literal",
+            )
+            return
+        cond_vars = _collect_cond_vars(cond)
+        if not cond_vars:
+            # No identifier / field-access in the condition — nothing
+            # we can structurally compare against the body.
+            return
+        assigned: set[str] = set()
+        for scope in body_scopes:
+            _collect_assigned_names(scope, assigned)
+        if cond_vars.isdisjoint(assigned):
+            names = ", ".join(sorted(cond_vars))
+            self.ctx.emit(
+                line=loop_node.line,
+                message=(
+                    f"condition variable(s) {{{names}}} not modified in body"
+                ),
+            )
+
+
+# ── SR033 helpers ──────────────────────────────────────────────────
+
+
+def _is_truthy_literal(expr: Expr) -> bool:
+    """True for any non-zero NumberLit or any non-empty StringLit."""
+    if isinstance(expr, NumberLit):
+        return expr.value != 0
+    if isinstance(expr, StringLit):
+        return len(expr.value) > 0
+    return False
+
+
+def _dotted_name(expr: Node) -> str | None:
+    """Return the string-form of an Identifier / FieldAccess chain.
+
+    ``Identifier("x")`` → ``"x"``;
+    ``FieldAccess(Identifier("obj"), "F")`` → ``"obj.F"``;
+    nested chains (``a.b.c``) are joined with dots.
+    Anything else returns ``None``.
+    """
+    if isinstance(expr, Identifier):
+        return expr.name
+    if isinstance(expr, FieldAccess):
+        target = _dotted_name(expr.target)
+        if target is None:
+            return None
+        return f"{target}.{expr.field}"
+    return None
+
+
+def _collect_cond_vars(expr: Node) -> set[str]:
+    """Walk ``expr`` collecting string-forms of every Identifier and
+    FieldAccess appearing in it, except those in callee position.
+
+    For a FieldAccess like ``obj.READY``, both ``"obj.READY"`` and
+    ``"obj"`` are recorded — reassigning the whole object also counts
+    as mutating ``obj.READY``.
+
+    Function and method names (``Call.callee``) are NOT recorded —
+    they are not variables that the body could mutate. ``Call`` args
+    are walked normally.
+    """
+    out: set[str] = set()
+
+    def walk(n: Node) -> None:
+        if isinstance(n, Call):
+            # Skip the callee; walk arguments only.
+            for arg in n.args:
+                walk(arg)
+            return
+        name = _dotted_name(n)
+        if name is not None:
+            out.add(name)
+            if isinstance(n, FieldAccess):
+                # Continue down so nested identifiers (``obj`` in
+                # ``obj.READY``) are also captured as bare names.
+                walk(n.target)
+            return
+        for child in n.children():
+            walk(child)
+
+    walk(expr)
+    return out
+
+
+def _collect_assigned_names(node: Node, out: set[str]) -> None:
+    """Walk ``node``'s subtree adding string-forms of every
+    AssignStmt target that is an Identifier or a FieldAccess.
+
+    TableSelector / ArrayIndex targets are intentionally ignored —
+    out of scope per the rule spec, and conservative (the disjoint
+    test will be more likely to fire, but only on shapes we have not
+    proven safe).
+    """
+    if isinstance(node, AssignStmt):
+        name = _dotted_name(node.target)
+        if name is not None:
+            out.add(name)
+    for child in node.children():
+        _collect_assigned_names(child, out)
 

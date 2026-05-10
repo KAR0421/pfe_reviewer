@@ -1,0 +1,7 @@
+// SR033 boundary silent: ``while (0)`` is a falsy literal so the
+// trivial-infinite path does not fire, and the condition has no
+// extractable identifiers so the disjoint path skips. Net: silent.
+while (0)
+{
+    log("never");
+}

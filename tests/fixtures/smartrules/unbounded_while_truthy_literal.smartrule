@@ -1,0 +1,6 @@
+// SR033 trivial-infinite: condition is the literal 1.
+x := 0;
+while (1)
+{
+    x := x + 1;
+}
