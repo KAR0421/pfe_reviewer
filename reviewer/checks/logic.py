@@ -56,19 +56,13 @@ class DeadCodeCheck(Check):
     control flow; any statement that follows them in the same statement
     list is unreachable.
 
-    The legacy ``check_dead_code`` worked line-by-line over the raw
-    script and produced false positives on:
-    - ``return``/``abort``/``skip`` literals appearing in comments or
-      inside string literals;
-    - ``if (x) return;`` followed by an ``else`` branch (legacy flagged
-      the ``else`` as dead);
-    - one-liner forms (multiple statements on the same line).
-
-    The AST version is structural: it inspects the statement list of
-    every ``Block`` and ``Script`` and only fires when a terminator is
-    not the last sibling — comments and strings have already been
-    stripped by the tokenizer, and ``if``/``else`` branches are distinct
-    sub-blocks.
+    The check is structural: it inspects the statement list of every
+    ``Block`` and ``Script`` and only fires when a terminator is not
+    the last sibling. Comments and strings have already been stripped
+    by the tokenizer, and ``if``/``else`` branches are distinct
+    sub-blocks, so terminator literals inside comments/strings or a
+    ``return`` in a then-branch followed by an ``else`` branch do not
+    fire.
     """
 
     def visit_Script(self, node: Script) -> None:
@@ -84,10 +78,10 @@ class DeadCodeCheck(Check):
         # are obviously unreachable too and reporting them all would be
         # noise.
         #
-        # Convention (matches legacy `check_dead_code`): the finding's
-        # ``line`` field points at the *terminator*, not the successor —
-        # that's the location a developer needs to fix. The successor's
-        # line is named in the message for context.
+        # Convention: the finding's ``line`` field points at the
+        # *terminator*, not the successor — that's the location a
+        # developer needs to fix. The successor's line is named in the
+        # message for context.
         for i, stmt in enumerate(stmts[:-1]):
             if isinstance(stmt, _TERMINATORS):
                 successor = stmts[i + 1]
@@ -208,9 +202,9 @@ class StaticConditionCheck(Check):
     """Flag ``if``/``while``/``do-while``/``for`` conditions that are
     statically constant (or trivially so).
 
-    Why this is better than the regex form in ``reviewer_legacy``:
+    Working at the AST level means:
     - Comments and string literals are already gone by the time we see
-      the AST, so ``// if (1 = 1)`` and ``"if (1 = 1)"`` no longer
+      the AST, so ``// if (1 = 1)`` and ``"if (1 = 1)"`` do not
       produce false positives.
     - We compare expression *trees*, not raw text, so ``(x) = x``,
       ``obj.F = obj.F``, and ``f(x) = f(x)`` are all detected.

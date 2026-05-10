@@ -5,14 +5,9 @@ Currently implements:
 - SR091 long script with insufficient log density relative to
   branching / loop / risky-call complexity.
 
-Both are migrated from the single ``check_logs`` function in
-``reviewer_legacy.py``. The legacy implementation flip-flopped a single
-``inside_loop`` boolean over raw text lines, so it confused comments
-and string literals with real loop headers, missed every log after the
-first one in a given loop, and counted physical lines instead of
-statements. The AST versions use the runner's loop stack and walk the
-parsed tree, so all of those classes of mistake disappear by
-construction.
+Both checks use the runner's loop stack and walk the parsed AST, so
+loop keywords inside comments/strings, post-loop logs, and per-call
+attribution all behave correctly by construction.
 """
 from __future__ import annotations
 
@@ -68,14 +63,8 @@ class VerboseLogInLoopCheck(Check):
     """Flag every ``msginfo`` / ``msgerror`` / ``msgwarn`` call site
     that is lexically inside a loop body.
 
-    Implements SPEC §8 SR090. The legacy regex-based version flipped a
-    single ``inside_loop`` boolean and reset it after the *first* log,
-    so it under-reported every loop with multiple log calls. It also
-    matched ``for`` / ``while`` / ``do`` inside comments and string
-    literals, and never noticed when a loop closed.
-
-    The AST version asks the runner's loop stack via
-    ``ctx.in_loop()`` — comments and strings have already been
+    Implements SPEC §8 SR090. The check asks the runner's loop stack
+    via ``ctx.in_loop()`` — comments and strings have already been
     discarded by the tokenizer, the loop stack pops correctly when the
     body's ``Block`` ends, and *every* matching call site is reported.
     """
@@ -207,15 +196,8 @@ class TooFewLogsCheck(Check):
     """Flag long scripts whose log density is too low to debug them in
     production.
 
-    Implements SPEC §8 SR091. The legacy version was a heuristic from
-    a different shape: ``len(lines) > 50 and num_logs < 3``. That
-    counts physical lines (so a script that is mostly a licence header
-    is wrongly flagged) and counts lines containing the substring
-    ``msg…(`` (so multiple logs per line are undercounted, and strings
-    containing the word ``msginfo`` are overcounted).
-
-    The AST version reformulates the rule around what we actually
-    care about: **observability**. We flag a script when:
+    Implements SPEC §8 SR091. The rule is framed around
+    **observability**: we flag a script when:
 
     - it has more than ``_LONG_SCRIPT_THRESHOLD`` statements
       (anything shorter is small enough to read), AND

@@ -7,9 +7,7 @@ applyTo: "reviewer/**,tests/test_ast*.py,tests/test_engine*.py,tests/test_checks
 # AST pipeline conventions
 
 This file governs code in the `reviewer/` package — the AST-based review
-pipeline that is replacing `reviewer_legacy.py`. Full design rationale is in
-[`docs/adr/0001-reviewer-architecture.md`](../../docs/adr/0001-reviewer-architecture.md);
-this file captures the rules that every new piece of code should follow.
+pipeline. It captures the rules every new piece of code should follow.
 
 ## Package layout
 ```
@@ -250,12 +248,6 @@ tests/
    string literal, minified on one line. The AST pipeline must handle
    these correctly by construction; tests prove it.
 
-### Diff-test during migration
-For each migrated check, add a parametrized test that loads every
-`.smartrule` fixture and asserts that the AST check and its legacy
-counterpart return findings that cover the same line numbers. Findings
-may differ in wording — they must agree on *where* issues are.
-
 ## Reporters
 
 - `console.py` — pretty-prints a `Report` for humans.
@@ -266,8 +258,6 @@ Reporters consume `Report` — they never touch the AST or the
 tokenizer. Keep this boundary sharp.
 
 ## Things this package must NOT do
-- Import from `reviewer_legacy`. The legacy module is quarantined; the
-  AST pipeline is a fresh build.
 - Regex over raw script text inside any check.
 - Track enclosing-loop/try state inside checks (use `CheckContext`).
 - Mutate `CHECKS` at runtime (filter, don't mutate).

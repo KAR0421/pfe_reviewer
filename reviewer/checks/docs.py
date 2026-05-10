@@ -25,11 +25,9 @@ from .logs import _count_complexity
 class MissingUserCommentCheck(Check):
     """Flag BizRules whose ``USER_COMMENT`` field is empty.
 
-    Implements SPEC §8 SR010. The legacy version
-    (``check_minimal_documentation``) returns one issue string when
-    ``bizrule.comment`` is falsy or whitespace; the AST version emits
-    a structured ``Finding`` with severity / category / rule-id so the
-    Bitbucket reporter can grade it later.
+    Implements SPEC §8 SR010. Emits a structured ``Finding`` with
+    severity / category / rule-id so the Bitbucket reporter can grade
+    it later.
     """
 
     def visit_Script(self, node: Script) -> None:
@@ -66,10 +64,9 @@ class InlineCommentDensityCheck(Check):
     """Flag scripts with many non-obvious constructs but few inline
     ``// ...`` comments.
 
-    Implements SPEC §8 SR012.1. There is no legacy counterpart — this
-    rule only became feasible once the tokenizer started preserving
-    comments on a side channel (``CheckContext.comments``) and the
-    SR091 check landed ``_count_complexity``.
+    Implements SPEC §8 SR012.1. The check relies on the tokenizer
+    preserving comments on a side channel (``CheckContext.comments``)
+    and on SR091's ``_count_complexity`` helper.
 
     Complexity matches SR091's definition (branches + loops + risky
     calls). The check is silent on trivial scripts (zero complexity)

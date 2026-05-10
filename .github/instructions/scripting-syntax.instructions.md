@@ -1,7 +1,7 @@
 ---
 name: "BizRule Script Syntax"
 description: "Syntax of the NeoXam-style scripting language this tool reviews"
-applyTo: "reviewer.py,preprocessor.py,reviewer/**,tests/fixtures/**,**/*.smartrule"
+applyTo: "reviewer/**,tests/fixtures/**,**/*.smartrule"
 ---
 
 # BizRule scripting language — quick reference
@@ -110,7 +110,7 @@ meaning; look at the trigger type in `SMARTRULE_TRIGGER` when needed.
 - Both assignment forms to match: `:=` and `?=`.
 - `if | while | do | until` condition is `<keyword>\s*\((.*?)\)`.
 
-## Anti-patterns already implemented in `reviewer.py`
+## Anti-patterns already implemented in `reviewer/`
 Generic names (`tmp`, `varX`, `temp`), missing `USER_COMMENT`, verbose logs
 inside loops, always-true/false conditions, dead code after terminators,
 SQL calls inside loops, nested loops, duplicate/similar queries.

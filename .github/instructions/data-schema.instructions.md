@@ -1,7 +1,7 @@
 ---
 name: "XML Pack Data Format"
 description: "Structure of the .pack XML files and how to safely extract BizRules"
-applyTo: "parser.py,xml_loader.py,tests/fixtures/**/*.xml"
+applyTo: "parser.py,tests/fixtures/**/*.xml"
 ---
 
 # XML `.pack` data format
@@ -34,8 +34,8 @@ inside scripts. This is why `parser.py` uses regex instead of a straight
 </BODY>
 ```
 Note: the document has **no single root element** in practice (`HEAD` and
-`BODY` are siblings at the top level). `xml_loader.py` works around this by
-wrapping content in a synthetic `<ROOT>`.
+`BODY` are siblings at the top level). The regex extraction in `parser.py`
+works around this by matching `<SMARTRULE>...</SMARTRULE>` blocks directly.
 
 ## `<SMARTRULE>` — the BizRule
 Attributes on the opening tag:
@@ -60,7 +60,7 @@ Key child elements (from `schema.xml`):
   **CDATA-wrapped**. Strip `<![CDATA[ ... ]]>` when extracting.
 - CDATA blocks may themselves contain `<`, `>`, `&`, `<!--...-->` and even
   substrings that look like XML tags. Never run an XML parser over a pack
-  without first sanitizing (see `xml_loader.py::replace_impact`).
+  without first sanitizing the `<IMPACT>` payloads to placeholders.
 - Some elements appear empty with a trailing space: `<DESCRIPTION ></DESCRIPTION>`.
 - `FIND` attribute uses single quotes around the value: `FIND="RULE_CODE='FOO'"`.
 - Packs may contain free-floating HTML-style comments (`<!-- ... -->`) at the
@@ -77,13 +77,3 @@ Key child elements (from `schema.xml`):
 When adding fields (e.g. `description`, `trigger_type`, `trigger_object`,
 `rule_category`, `update_date`, `user`), extend `BizRule.__init__`
 **in `parser.py`** and update this table.
-
-## Two loader styles in the repo
-1. `parser.py` — regex-only, no real XML parsing. Robust to malformed packs,
-   fragile if tag layout changes. Currently used by `main.py`.
-2. `xml_loader.py` — sanitizes `<IMPACT>` to placeholders, wraps in `<ROOT>`,
-   parses with `ElementTree`, then restores the scripts. Cleaner model, but
-   not yet wired into `main.py`.
-
-If consolidating, prefer the sanitize-then-parse model (#2). Do not attempt
-a third loader without a clear reason.

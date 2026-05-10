@@ -72,16 +72,10 @@ class NestedLoopCheck(Check):
       almost always a bug.
     - **warning**: every other case (default).
 
-    Weaknesses of the legacy regex-based version that this fixes:
-    - The legacy scanner matches ``for``/``while``/``do`` substrings
-      inside comments and string literals.
-    - ``do { ... } while (...)`` was double-counted because the legacy
-      stack pushed on both the ``do`` line and the trailing ``while``.
-    - Brace de-sync: a ``}`` closing an ``if`` body popped a loop
-      frame, yielding off-by-one nesting reports.
-
-    The AST version uses the runner-maintained loop stack
-    (``CheckContext._loop_stack``).
+    The check uses the runner-maintained loop stack
+    (``CheckContext._loop_stack``), so loop keywords inside comments
+    or string literals, ``do { ... } while (...)`` shapes, and ``}``
+    closing non-loop blocks all behave correctly by construction.
     """
 
     def visit_ForCStyle(self, node) -> None:
@@ -221,11 +215,7 @@ _QUERY_FUNCTIONS: frozenset[str] = frozenset({"getsqldata", "getdata"})
 class RepeatedQueryCheck(Check):
     """Detect repeated SQL queries within a single BizRule.
 
-    Implements SPEC §8 SR032 as a substantial expansion of the legacy
-    ``check_repeated_queries`` (which only catched exact duplicates of
-    queries assembled into a variable and passed to ``getSqlData``).
-
-    Three tiers, most-specific first:
+    Implements SPEC §8 SR032. Three tiers, most-specific first:
 
     - **error (T1)**: same table, same SELECT fields, same WHERE
       conjuncts → the second call is fully redundant.
@@ -239,8 +229,8 @@ class RepeatedQueryCheck(Check):
     Both ``getSqlData(...)`` and ``getData(...)`` are query primitives
     in this language; both are checked. The check sees the AST after
     string concatenations have been flattened and after the rule's
-    intra-script string assignments have been substituted, so it
-    catches the legacy's many false negatives:
+    intra-script string assignments have been substituted, so the
+    following forms are all recognised:
 
     - inline ``getSqlData("select ...")`` calls
     - string-concatenation builders (``"select ... " + idVal``)

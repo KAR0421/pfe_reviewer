@@ -1,6 +1,5 @@
-// Edge: a single do-while loop. The legacy regex pushed two frames
-// (one for `do`, one for the trailing `while`), spuriously reporting
-// nesting. The AST sees one DoWhile node.
+// Edge: a single do-while loop is one DoWhile node, not nested loops.
+// SR031 must stay silent.
 do
 {
   x := x + 1;

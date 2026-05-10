@@ -1,0 +1,4 @@
+// SR032: two inline getSqlData(...) calls (no intermediate variable)
+// with identical SQL strings must pair as exact duplicates.
+rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A' AND status = 1");
+rowsB := getSqlData("SELECT id FROM mxthing WHERE code = 'A' AND status = 1");

@@ -4,13 +4,12 @@ from __future__ import annotations
 from ..engine.finding import Report
 
 
-def print_report(report: Report, *, label: str = "") -> None:
-    """Print a Report to stdout. ``label`` distinguishes parallel runs."""
-    prefix = f"[{label}] " if label else ""
+def print_report(report: Report) -> None:
+    """Print a Report to stdout."""
     if not report.findings:
-        print(f"{prefix}{report.rule_name}: no issues found.")
+        print(f"{report.rule_name}: no issues found.")
         return
-    print(f"{prefix}{report.rule_name}: {len(report.findings)} finding(s)")
+    print(f"{report.rule_name}: {len(report.findings)} finding(s)")
     for i, f in enumerate(report.findings, 1):
         loc = f"line {f.line}" if f.line is not None else "—"
         print(

@@ -1,14 +1,9 @@
 """Tests for documentation checks (SR010 MissingUserCommentCheck,
 SR012.1 InlineCommentDensityCheck).
 
-SR010 is a faithful migration of ``check_minimal_documentation`` —
-trivially-correct, no semantic divergence; the diff-test is a strict
-equality.
-
-SR012.1 is AST-native. Legacy never implemented a comment-density
-rule (regex over raw text would have been distorted by ``//`` inside
-string literals). Tests cover positive, negative, and the trivial
-case where complexity is zero.
+SR012.1 uses the tokenizer's comment side-channel
+(``CheckContext.comments``) so ``//`` markers inside string literals
+do not distort the count.
 """
 from __future__ import annotations
 
@@ -19,7 +14,6 @@ import pytest
 
 from reviewer import checks as _checks  # noqa: F401  (registers checks)
 from reviewer.engine.runner import run_review
-from reviewer_legacy import check_minimal_documentation
 
 
 FIXTURES = Path(__file__).parent / "fixtures" / "smartrules"
@@ -70,9 +64,6 @@ def test_sr010_negative_real_comment() -> None:
     assert _ast_lines(br, "SR010") == set()
 
 
-# ── Diff-test: AST and legacy must agree exactly on SR010 ──────────
-
-
 @pytest.mark.parametrize(
     "comment,expected_fires",
     [
@@ -83,14 +74,12 @@ def test_sr010_negative_real_comment() -> None:
         (" non-trivial ", False),
     ],
 )
-def test_sr010_matches_legacy_exactly(comment: str, expected_fires: bool) -> None:
-    """SR010 is a faithful port: AST and legacy must agree on every
-    input. No divergence allowed.
-    """
+def test_sr010_fires_on_blank_or_whitespace_only(
+    comment: str, expected_fires: bool
+) -> None:
+    """SR010 fires iff `USER_COMMENT` is empty or whitespace-only."""
     br = FakeBizRule(name="X", script="x := 1;", comment=comment)
-    legacy_fires = bool(check_minimal_documentation(br))
-    ast_fires = bool(_ast_lines(br, "SR010"))
-    assert legacy_fires == ast_fires == expected_fires
+    assert bool(_ast_lines(br, "SR010")) is expected_fires
 
 
 # ════════════════════════════════════════════════════════════════════

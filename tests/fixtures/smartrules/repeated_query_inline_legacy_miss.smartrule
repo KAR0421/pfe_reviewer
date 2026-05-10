@@ -1,6 +1,0 @@
-// SR032 AST-improvement: legacy regex required the SQL to be assigned
-// to a variable AND passed to getSqlData by name. The AST flattens
-// inline calls and concatenations, so two inline calls with identical
-// SQL are now caught.
-rowsA := getSqlData("SELECT id FROM mxthing WHERE code = 'A' AND status = 1");
-rowsB := getSqlData("SELECT id FROM mxthing WHERE code = 'A' AND status = 1");

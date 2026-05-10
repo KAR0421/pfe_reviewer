@@ -1,83 +1,152 @@
 ---
-description: "Add a new review check (AST-based) that has no legacy counterpart"
+description: "Add a new AST-based review check, with a critical-thinking design phase before any code is written"
 agent: "agent"
 ---
 # /new-review-check
 
-Add a brand-new review check in the AST pipeline. For migrating an
-existing legacy check, use `/migrate-check` instead.
+Add a new review check to the AST pipeline, following
+[`.github/instructions/ast-pipeline.instructions.md`](../instructions/ast-pipeline.instructions.md).
 
 Inputs:
-- Check topic:      ${input:topic:Short name, e.g. "array_alias"}
-- What it detects:  ${input:what:One sentence}
+- Rule ID:          ${input:ruleId:from `docs/SPEC.md` §6, e.g. SR033}
+- Target check class: ${input:className:e.g. UnboundedLoopCheck}
 - Spec category:    ${input:category:naming | docs | logic | perf | security | deps | logs | scope | lang}
-- Rule ID:          ${input:ruleId:from docs/SPEC.md; if new, add a row there first}
 - Severity:         ${input:severity:info | warning | error}
 
 ## Preconditions
 
-1. The AST pipeline exists (`reviewer/engine/runner.py` imports and
-   tests are green). If not, stop and direct the user to
-   `/scaffold-pipeline`.
-2. The rule ID has a row in either §6 (Review scope) or §8b (Migration
-   Status) of `docs/SPEC.md`. If not, add a row to §6 first with a
-   one-line description, then proceed.
+Verify before starting:
+1. The check's row exists in `docs/SPEC.md` §6. If it does not, stop and
+   tell the user to add the row first (with description and severity).
+2. The row's `Status` is `pending` (not `done`, not `agentic`).
+3. No check class with the same `RULE_ID` is already registered in
+   `reviewer/checks/`.
 
-## What to produce
+If any of these fail, stop and explain.
 
-Follow [`.github/instructions/ast-pipeline.instructions.md`](../instructions/ast-pipeline.instructions.md)
-exactly.
+## Step 1 — Read the SPEC row critically
 
-1. **Check class** in `reviewer/checks/<category>.py`:
-   - `@register_check(rule_id="${input:ruleId}", category="${input:category}", severity="${input:severity}", description=...)`
-   - Subclass of `Check`.
-   - Visitor methods on the AST node kinds that carry the pattern.
-   - Docstring citing the SPEC row.
-   - `self.ctx.emit(line=..., message=...)` to report findings.
-   - No regex over raw script text. No re-implementation of loop/try
-     tracking — use `self.ctx.in_loop()` / `self.ctx.in_try()`.
+Open `docs/SPEC.md`, locate the row for `${input:ruleId}`, and produce
+**three summaries** — show all three to the user before writing any code:
 
-2. **Import** from `reviewer/checks/__init__.py` if the category module
-   is new.
+1. **What the check is trying to detect** (the *intent*). Quote the
+   one-line description from the SPEC table, then expand: what real
+   defect is this catching? What does a representative offending
+   BizRule look like? Cite an example from `sample.pack.xml` or
+   `sample.pack2.xml` if you can find one.
 
-3. **Tests** in `tests/test_checks_<category>.py`:
-   - Positive: fixture that triggers; assert rule_id + line numbers.
-   - Negative: clean fixture; assert no findings for this rule_id.
-   - Edge: pattern inside a comment AND inside a string — must NOT
-     flag. (This is the whole point of using an AST; the test
-     enforces it.)
-   - Any other category-specific edge (empty script, long script,
-     minified, nested).
+2. **What "in scope" means for this rule.** Be precise about the
+   forms the rule does and does not flag. For example, if the rule is
+   "unbounded loop", does `while (i < n)` count when `n` is a literal?
+   When it's an identifier? When it's a function call? Pick a stance
+   and justify it. The wrong stance now is cheaper than the wrong
+   stance after merge.
 
-4. **Fixtures** in `tests/fixtures/smartrules/` — plain BizRule
-   bodies, styled like real scripts from `sample_pack.xml`.
+3. **What the check is explicitly NOT.** Catalogue the adjacent
+   patterns this rule must *not* fire on, to avoid false positives.
+   Include at least:
+   - Patterns that look similar inside string literals.
+   - Patterns that look similar inside comments.
+   - Patterns that look similar but are syntactically different
+     (e.g. `for X := 1 to n do` is bounded by spec but `n` is a
+     variable — does that count?).
 
-5. **Docs**:
-   - If the rule ID is not yet in `docs/SPEC.md` §6, add it.
-   - If the category does not yet have a check module, mention that
-     in the summary.
+**Wait for the user to confirm the plan before writing code.**
 
-## Quality bar
+## Step 2 — Identify AST hooks
 
-- Think about which AST node is actually the pattern before writing
-  any code. Write a one-line plan such as "visit `AssignStmt` where
-  target is an `Identifier` and value is another `Identifier`, and
-  both are known to be array-typed" — then implement.
-- If the only way you can think to detect the pattern is "scan the
-  source text with a regex", **stop and reconsider** — usually this
-  means the pattern belongs elsewhere (tokenizer, parser, or
-  `CheckContext`) rather than as regex in a check.
-- If the check needs structural info not on the AST today (e.g. type
-  inference, call graph), state the gap clearly before proceeding —
-  the right move is often to extend the AST or `CheckContext` once and
-  share that extension with future checks, rather than hack it into
-  this one check.
+Decide which visitor methods the new check needs based on the
+*intent* identified in Step 1, not on superficial syntax. Common
+patterns:
 
-## Deliverable summary
+- Pattern matches **a specific node kind** → override `visit_<Kind>`.
+- Pattern matches **a call to a specific built-in** → override
+  `visit_Call` and filter on callee name.
+- Pattern cares about **enclosing context** (inside a loop, inside a
+  try) → use `self.ctx.in_loop()` / `self.ctx.in_try()`.
+- Pattern is **whole-script** (e.g. "too few logs", "any duplicate
+  query") → override `visit_Script` and walk once, collecting state
+  before reporting.
+- Pattern is **structural across siblings** (e.g. dead code after a
+  terminator) → override `visit_Block` and walk the statement list.
+- Pattern needs **expression-tree analysis** (e.g. always-true
+  conditions, expression complexity) → override `visit_<StmtKind>`
+  for statements that hold the expression and analyze the
+  `BinaryOp` / `UnaryOp` / literal nodes structurally.
+- Pattern needs **graded severity** (e.g. risk levels based on what
+  else is in the subtree) → use the `severity=` override on
+  `self.ctx.emit()` and write helper functions that classify the
+  context.
 
-End your turn with a short message that states:
-- The rule ID, class name, file path.
-- Which AST nodes the check visits.
-- How many tests + fixtures were added.
-- Any decision (e.g. "extended `CheckContext` with `assigned_arrays`
-  set") that future check authors should know about.
+State your plan before implementing, including:
+- Which visitor methods you'll override.
+- What helpers you'll extract (and whether they're reusable across
+  checks).
+- Whether the check needs new structural information added to
+  `CheckContext` — if yes, propose the addition explicitly so it
+  benefits future checks too.
+- How severity is determined (single severity, or graded).
+- Any edge cases the check must explicitly handle (these become
+  positive or edge tests in Step 4).
+
+**Wait for confirmation before implementing.**
+
+## Step 3 — Implement the check
+
+Create or extend `reviewer/checks/<category>.py` — the category must
+match the one in `docs/SPEC.md`. Register with
+`@register_check(rule_id=..., category=..., severity=..., description=...)`
+and import the module from `reviewer/checks/__init__.py` if it's not
+already.
+
+Rules (reminder from the instructions file):
+- No regex over `bizrule.script`. Use AST node properties only.
+- `line` comes from a node (`node.line` or `node.callee.line`).
+- Enclosing-context is read from `self.ctx`, not tracked per check.
+- Docstring cites the SPEC row.
+- Finding message names the offending element clearly enough that a
+  reviewer can act on it without re-reading the source.
+
+## Step 4 — Tests
+
+Add to `tests/test_checks_<category>.py`:
+
+1. **Positive** — fixture that triggers the issue; assert exactly the
+   expected set of findings (rule_id, line, key message substring).
+2. **Negative** — fixture where the issue is absent; assert that the
+   check produced zero findings for this rule_id.
+3. **Edge** — at minimum, a case where the pattern appears inside a
+   comment AND inside a string literal. The AST pipeline must handle
+   these correctly by construction; tests prove it.
+4. **Boundary tests** — for any threshold or graded-severity rule,
+   one test that lands exactly on the boundary (silent) and one that
+   lands one unit past it (fires). Document the boundary in the
+   assertion.
+
+Create fixtures under `tests/fixtures/smartrules/` in plain-text
+BizRule-body style. Base them on real patterns from `sample.pack.xml`
+and `sample.pack2.xml` where possible — the goal is for fixtures to
+look like code that could plausibly land in a real pack.
+
+## Step 5 — Update the Status table
+
+In `docs/SPEC.md` §6, change the row's `Status` from `pending` to
+`done`. If the rule has graded severity or any subtle policy choice,
+add a footnote explaining it (see `[^sr031]`, `[^sr032]`, `[^sr091]`
+for examples).
+
+## What you deliver at the end
+
+1. New check class in `reviewer/checks/<category>.py`.
+2. Import line added to `reviewer/checks/__init__.py` if needed.
+3. Tests added: positive, negative, edge, plus any boundary tests.
+4. One or more new fixtures in `tests/fixtures/smartrules/`.
+5. SPEC row updated to `done`, with footnote if needed.
+6. A short summary message stating:
+   - The rule ID, class name, file path.
+   - Which AST nodes the check visits.
+   - How many tests + fixtures were added.
+   - Any decision (e.g. "extended `CheckContext` with `assigned_arrays`
+     set") that future check authors should know about.
+
+Do NOT touch unrelated files.

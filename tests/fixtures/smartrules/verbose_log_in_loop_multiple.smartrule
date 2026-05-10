@@ -1,5 +1,5 @@
-// AST-only: legacy "warns once per loop" so it sees only line 4.
-// AST flags every log call site.
+// SR090: every log call site inside a loop body must fire — one
+// finding per call, not one per loop.
 foreach item in items do
 {
   msginfo("a");

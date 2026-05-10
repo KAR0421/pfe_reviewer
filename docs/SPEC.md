@@ -13,13 +13,17 @@ Today these scripts are difficult to review:
 - The impact of a change is rarely obvious from the diff alone.
 - Review is currently manual, slow, and inconsistent between reviewers.
 
+This reviewer is an AST-based static analyzer: it tokenizes and parses each
+BizRule script into an AST, then walks the tree once with a registry of
+checks that emit structured findings.
+
 ## 2. Goal
 Build a tool that:
 1. **Extracts** BizRules from XML pack files.
 2. **Analyzes** the scripts against a fixed scope of quality checks.
 3. **Emits** a structured report of findings.
-4. (Later) **Integrates** with Bitbucket pull requests to post the report
-   as inline comments.
+4. **Integrates** with Bitbucket pull requests to post the report as
+   inline comments.
 
 ## 3. Non-goals
 - Rewriting or auto-fixing scripts (the team explicitly wants no
@@ -31,53 +35,34 @@ Build a tool that:
 
 ## 4. Architecture
 
-### Overview
-The reviewer has two pipelines running in parallel during the migration
-from the flat regex-based design to an AST-based design. See
-[`docs/adr/0001-reviewer-architecture.md`](adr/0001-reviewer-architecture.md)
-for the full decision record.
-
 ```
-                        ┌──────────────────────────────────┐
-                        │ XML .pack  →  BizRule[] loader   │
-                        └──────────────────────────────────┘
-                                        │
-                            ┌───────────┴───────────┐
-                            ▼                       ▼
-                    reviewer_legacy.py       reviewer/  (AST pipeline)
-                    (regex-per-check)        tokenizer → parser → AST
-                    FROZEN                   → engine visitor
-                                             → checks → Findings
-                            │                       │
-                            └───────────┬───────────┘
-                                        ▼
-                                 Report / diff
-                                        │
-                                        ▼
-                                 console (now)
-                                 JSON (M2)
-                                 Bitbucket PR (M4)
+XML .pack
+    │
+    ▼
+BizRule extraction (parser.py)
+    │
+    ▼
+tokenize  →  parse  →  AST
+                         │
+                         ▼
+                engine visitor walks the tree once,
+                dispatching every node to every registered check
+                         │
+                         ▼
+                     Findings
+                         │
+                         ▼
+                     reporter (console / JSON / Bitbucket)
 ```
 
-### Current modules
-- `parser.py`            — regex extraction of `<SMARTRULE>` blocks.
-- `xml_loader.py`        — alternative sanitize-then-parse XML loader.
-- `preprocessor.py`      — legacy helper; being retired.
-- `reviewer_legacy.py`   — flat regex-per-check implementation (frozen;
-                           awaiting full migration).
-- `reviewer/`            — new AST pipeline:
+### Modules
+- `parser.py`   — extracts `<SMARTRULE>` blocks from the pack.
+- `main.py`     — CLI entry point.
+- `reviewer/`   — the AST pipeline:
     - `ast/{tokens,tokenizer,nodes,parser}.py`
     - `engine/{finding,registry,visitor,runner}.py`
-    - `checks/<category>.py`
+    - `checks/<category>.py` — one module per category.
     - `reporters/{console,json_reporter}.py`
-- `main.py`              — CLI entry; runs both pipelines and prints both
-                           reports during the migration.
-
-### Why two pipelines during migration
-Running legacy and new side-by-side lets each migrated check be validated
-on real pack fixtures by diffing findings. Once every check in the
-Migration Status table below is green and diffs are clean,
-`reviewer_legacy.py` and its parallel path in `main.py` are deleted.
 
 ## 5. Data model
 ```python
@@ -90,113 +75,113 @@ class BizRule:
 Planned additions: `description`, `trigger_type`, `trigger_object`,
 `rule_category`, `update_date`, `user`, `active`.
 
-Reporting: today, `review_bizrule` returns `{"name": str, "issues": list[str]}`.
-Target:
 ```python
-@dataclass
+@dataclass(frozen=True)
 class Finding:
-    rule_id: str     # "SR###"
-    category: str    # naming|docs|logic|perf|security|deps|logs|scope
-    severity: str    # info|warning|error
+    rule_id: str        # "SR###"
+    category: str       # naming|docs|logic|perf|security|deps|logs|scope|lang
+    severity: str       # info | warning | error
     line: int | None
     message: str
+    bizrule: str        # the RULE_CODE
 
-@dataclass
+@dataclass(frozen=True)
 class Report:
     rule_name: str
-    findings: list[Finding]
-    score: int | None   # 0..100, added in "Nice to Have" phase
+    findings: tuple[Finding, ...]
 ```
+Note: a `Finding.score` field is planned for M5 (scoring) — not present today.
 
 ## 6. Review scope
 Translated and expanded from `docs/review-scope.pdf`. Rule IDs are
-stable; pick the next free ID when adding a new check.
+stable; pick the next free ID when adding a new check. Status is one of
+`done`, `pending`, or `agentic` (deferred to the LLM-driven phase).
 
 ### Must Have — automated, mandatory
 
 #### Naming & conventions
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR001 | warning  | Generic / ambiguous variable names (`tmp1`, `varX`, `temp`). |
-| SR002 | warning  | BizRule `RULE_CODE` does not follow project naming convention. |
-| SR003 | info     | Rule name / code mismatch with its documented purpose. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR001 | warning  | Generic / ambiguous variable names (`tmp1`, `varX`, `temp`). | agentic |
+| SR002 | warning  | BizRule `RULE_CODE` does not follow project naming convention. | pending |
+| SR003 | info     | Rule name / code mismatch with its documented purpose. | agentic |
 
 #### Minimal documentation
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR010   | error    | Missing or empty `USER_COMMENT`. |
-| SR011   | warning  | Missing or empty `DESCRIPTION`. |
-| SR012.1 | warning  | Insufficient inline comment density: fewer than 1 `//` comment per 12 branches/loops/risky calls. Complexity definition same as SR091 (branches + loops + risky_calls). [^sr012_1] |
-| SR012.2 | info     | Comments describe *how* instead of *why*. |
+| ID      | Severity | Description | Status |
+|---------|----------|-------------|--------|
+| SR010   | error    | Missing or empty `USER_COMMENT`. | done |
+| SR011   | warning  | Missing or empty `DESCRIPTION`. | pending |
+| SR012.1 | warning  | Insufficient inline comment density: fewer than 1 `//` comment per 12 branches/loops/risky calls. Complexity definition same as SR091 (branches + loops + risky_calls). [^sr012_1] | done |
+| SR012.2 | info     | Comments describe *how* instead of *why*. | agentic |
 
 #### Static logic
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR020 | error    | Condition is always true / always false (two literals, same var both sides, or a literal-vs-literal sub-expression hidden inside `and`/`or`). [^sr020] |
-| SR021 | warning  | Dead code after `return` / `abort` / `skip`. |
-| SR022 | info     | Pre-conditions placed after computations (suboptimal ordering). |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR020 | error    | Condition is always true / always false (two literals, same var both sides, or a literal-vs-literal sub-expression hidden inside `and`/`or`). [^sr020] | done |
+| SR021 | warning  | Dead code after `return` / `abort` / `skip`. | done |
+| SR022 | info     | Pre-conditions placed after computations (suboptimal ordering). | pending |
 
 #### Basic performance
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR030 | error    | SQL query (`getSqlData`) executed inside a loop. |
-| SR031 | warning  | Nested loops (two or more levels). |
-| SR032 | warning  | Duplicate / near-duplicate queries in the same rule. |
-| SR033 | warning  | Unbounded or trivially infinite loop. |
-| SR034 | info     | Repeated read of the same object field without local caching. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR030 | error    | SQL query (`getSqlData`) executed inside a loop. | done |
+| SR031 | warning  | Nested loops (two or more levels). [^sr031] | done |
+| SR032 | warning  | Duplicate / near-duplicate queries in the same rule. [^sr032] | done |
+| SR033 | warning  | Unbounded or trivially infinite loop. | pending |
+| SR034 | info     | Repeated read of the same object field without local caching. | pending |
 
 #### Security & robustness
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR040 | error    | Hardcoded sensitive literal (credential, URL, ID looking like a secret). |
-| SR041 | error    | Division where the right operand could be zero. |
-| SR042 | warning  | Field access on a value not checked for null / existence. Note: `obj.FIELD[COND] := v` auto-creates if no record matches — treat this as a different class of issue, not a null guard failure. |
-| SR043 | warning  | Risky call (`getSqlData`, `callService`, `getObjects`, `obj.set`, `obj.method(...)`) not wrapped in a `try { } onerror { }` block. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR040 | error    | Hardcoded sensitive literal (credential, URL, ID looking like a secret). | agentic |
+| SR041 | error    | Division where the right operand could be zero. | pending |
+| SR042 | warning  | Field access on a value not checked for null / existence. Note: `obj.FIELD[COND] := v` auto-creates if no record matches — treat this as a different class of issue, not a null guard failure. | pending |
+| SR043 | warning  | Risky call (`getSqlData`, `callService`, `getObjects`, `obj.set`, `obj.method(...)`) not wrapped in a `try { } onerror { }` block. | pending |
 
 #### Dependencies
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR050 | error    | BizRule / class / list referenced but not in the pack or the reference. |
-| SR051 | warning  | Cross-dependency (BR A calls BR B which calls A). |
-| SR052 | info     | BizRule references an object that exists only partially (e.g. missing field). |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR050 | error    | BizRule / class / list referenced but not in the pack or the reference. | pending |
+| SR051 | warning  | Cross-dependency (BR A calls BR B which calls A). | pending |
+| SR052 | info     | BizRule references an object that exists only partially (e.g. missing field). | pending |
 
 #### Language semantics (revealed by `syntaxe.odt`)
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. |
-| SR056 | info     | `:=` used where `?=` may have been intended (or vice versa). Heuristic — flag as info only. |
-| SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. |
-| SR058 | info     | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an existence check first. The kernel silently creates a record when none matches. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. | pending |
+| SR056 | info     | `:=` used where `?=` may have been intended (or vice versa). Heuristic — flag as info only. | pending |
+| SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. | pending |
+| SR058 | info     | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an existence check first. The kernel silently creates a record when none matches. | pending |
 
 ### Should Have — if time permits
 
 #### Scope (technical)
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR060 | warning  | `SMARTRULE_TRIGGER` empty or malformed. |
-| SR061 | warning  | `TRIGGER_OBJECT` not present in the reference or the pack. |
-| SR062 | info     | `TRIGGER_TYPE` code does not match a known enum value. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR060 | warning  | `SMARTRULE_TRIGGER` empty or malformed. | pending |
+| SR061 | warning  | `TRIGGER_OBJECT` not present in the reference or the pack. | pending |
+| SR062 | info     | `TRIGGER_TYPE` code does not match a known enum value. | pending |
 
 #### Return-type usage
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR070 | info     | Return type of a called BizRule cannot be inferred. |
-| SR071 | warning  | Return value of a called BizRule is ignored. |
-| SR072 | warning  | Return value is used inconsistently with its declared type. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR070 | info     | Return type of a called BizRule cannot be inferred. | pending |
+| SR071 | warning  | Return value of a called BizRule is ignored. | pending |
+| SR072 | warning  | Return value is used inconsistently with its declared type. | pending |
 
 #### Version comparison
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR080 | info     | Rule has changed vs. previous version. |
-| SR081 | warning  | Logic change detected (not just whitespace / comments). |
-| SR082 | error    | Possible involuntary overwrite of a newer version. |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR080 | info     | Rule has changed vs. previous version. | pending |
+| SR081 | warning  | Logic change detected (not just whitespace / comments). | pending |
+| SR082 | error    | Possible involuntary overwrite of a newer version. | pending |
 
 #### Logs
-| ID    | Severity | Description |
-|-------|----------|-------------|
-| SR090 | warning  | Verbose log call inside a loop. |
-| SR091 | info     | Long script with insufficient log density relative to its branching / loop / risky-call complexity. [^sr091] |
-| SR092 | info     | Log call emits only a constant string (no key values). |
+| ID    | Severity | Description | Status |
+|-------|----------|-------------|--------|
+| SR090 | warning  | Verbose log call inside a loop. | done |
+| SR091 | info     | Long script with insufficient log density relative to its branching / loop / risky-call complexity. [^sr091] | done |
+| SR092 | info     | Log call emits only a constant string (no key values). | pending |
 
 ### Nice to Have — bonus
 - **AI / ML pattern detection** — flag known-risky constructs via a
@@ -207,77 +192,47 @@ stable; pick the next free ID when adding a new check.
   `merge safe / risky` indicator.
 
 ## 7. Output
-### Phase 1 — console (current)
-Text block per BizRule; numbered list of issues; `"No issues found!"` when clean.
 
-### Phase 2 — structured
-JSON matching the `Report` dataclass above, one object per rule, dumped to
-stdout or a file.
+### Phase A — console (current)
+Text block per BizRule; numbered list of findings; `"no issues found."`
+when clean.
 
-### Phase 3 — Bitbucket integration
+### Phase B — structured
+JSON matching the `Report` dataclass above, one object per rule, dumped
+to stdout or a file.
+
+### Phase C — Bitbucket integration
 Post findings as inline PR comments, one per finding at its line number.
-Requires: Bitbucket REST API credentials, a mapping from pack file + line
-to the PR diff, and a batch-comment strategy (probably one summary comment
-+ inline for `severity >= warning`).
+Requires Bitbucket REST API credentials, a mapping from pack file +
+line to the PR diff, and a batch-comment strategy (probably one summary
+comment + inline for `severity >= warning`).
 
 ## 8. Milestones
-1. **M1 — Foundation (current).** Legacy reviewer running against a pack
-   from disk; 8 Must-Have checks; console output.
-2. **M1b — AST pipeline.** Scaffold `reviewer/` package, tokenizer, parser,
-   engine, first migrated check. Parallel execution in `main.py`.
-3. **M2 — Harden.** Finish migrating every legacy check to AST; finalize
-   `Finding` / `Report`; JSON reporter; delete `reviewer_legacy.py`. Add
-   remaining Must-Have checks (security, dependencies, language
-   semantics SR055–SR058).
-4. **M3 — Should Have.** Trigger/scope checks, log quality, version diff.
-5. **M4 — Integration.** Bitbucket PR comments, CI hook.
-6. **M5 — Nice to Have.** Scoring, refactor hints, ML prototype.
 
-## 8b. Migration Status
-
-One row per check. "Status" progresses: **pending → in-progress → done**.
-When all Must-Have rows are **done** and diff-tests are green on every
-pack fixture, `reviewer_legacy.py` is deleted.
-
-| Rule ID | Legacy function               | AST check class       | Status  | Diff-test clean? |
-|---------|-------------------------------|-----------------------|---------|------------------|
-| SR001   | `check_naming_conventions`    | `GenericVarNameCheck` | pending | —                |
-| SR010   | `check_minimal_documentation` | `MissingUserCommentCheck` | done    | yes (faithful port; AST and legacy agree on every input — see `tests/test_checks_docs.py`) |
-| SR012.1 | — (AST-native, no legacy)     | `InlineCommentDensityCheck` | done    | n/a (no legacy counterpart — uses tokenizer comment side-channel; see `tests/test_checks_docs.py` and `[^sr012_1]`) |
-| SR020   | `check_static_conditions`     | `StaticConditionCheck` | done    | yes (subset; legacy under-reports on nested parens / conjunctions — see `tests/test_checks_logic.py`) |
-| SR021   | `check_dead_code`             | `DeadCodeCheck`       | done    | yes (subset of legacy; legacy over-reports on comments/strings/if-else — see `tests/test_checks_logic.py`) |
-| SR030   | `check_sql_in_loops`          | `SqlInLoopCheck`      | done    | yes              |
-| SR031   | `check_nested_loops`          | `NestedLoopCheck` [^sr031] | done    | yes (subset; legacy over-reports on comments/strings/do-while/brace-desync — see `tests/test_checks_performance.py`) |
-| SR032   | `check_repeated_queries`      | `RepeatedQueryCheck` [^sr032] | done    | n/a (intentionally reformulated — three-tier severity grading and pattern detection; legacy was a strict subset; divergence cases asserted in `tests/test_checks_performance.py`) |
-| SR090   | `check_logs` (verbose-in-loop part) | `VerboseLogInLoopCheck` | done    | yes (subset; legacy under-reports — only first log per loop — and over-reports inside comments / strings / after the loop closes — see `tests/test_checks_logs.py`) |
-| SR091   | `check_logs` (too-few-logs part)    | `TooFewLogsCheck`       | done    | n/a (intentionally reformulated — the AST rule talks about log density vs. branch/loop/risky-call complexity, not physical line count; divergence cases asserted in `tests/test_checks_logs.py`) |
-
-[^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
-
-[^sr032]: `RepeatedQueryCheck` grades severity by similarity tier across both query primitives (`getSqlData`, `getData`): **error (T1)** for exact duplicate queries (same table, SELECT, WHERE); **warning (T2)** for same table + WHERE with different SELECT fields (suggested fix: union the SELECT); **info (T3)** for same table + SELECT whose WHEREs differ only in exactly one column's literal-equality value (suggested fix: merge with `column IN (val1, val2)`). The check sees flattened SQL strings — string-concatenation builders and one-shot variable assignments are resolved before comparison — so it catches inline calls, mixed-case keywords, and `getData(...)` calls that the legacy regex missed.
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, nine
+  checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR090,
+  SR091), full test suite green.
+- **M2 — current.** Finish the remaining structural Must-Have checks
+  (SR011, SR022, SR033, SR034, SR041–SR043, SR050–SR052, SR055–SR058,
+  plus SR002).
+- **M3 — Bitbucket integration.** Post findings as PR comments via the
+  Bitbucket REST API; CI hook.
+- **M4 — Should-Have checks.** DB-connected dependency resolution
+  (SR050/SR061), return-type checks (SR070–SR072), version diff
+  (SR080–SR082), log polish (SR092).
+- **M5 — Agentic checks and quality.** LLM-driven checks for the
+  semantic patterns marked `agentic` above (SR001, SR003, SR012.2,
+  SR040), plus refactor hints, scoring, and PR-level checks.
 
 [^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
 
-[^sr012_1]: SR012.1 is an AST-native check (no legacy counterpart). Counts are taken from `CheckContext.comments` (tokenizer side-channel) and `_count_complexity` (shared with SR091). The 1:12 ratio targets non-obvious code: assignments don't need comments, but branches and risky calls usually do.
+[^sr012_1]: SR012.1 counts `//` and `/* ... */` comments from `CheckContext.comments` (tokenizer side-channel) and complexity from `_count_complexity` (shared with SR091). The 1:12 ratio targets non-obvious code: assignments don't need comments, but branches and risky calls usually do.
 
-[^sr091]: `TooFewLogsCheck` is a deliberate reformulation of the legacy heuristic (`len(lines) > 50 and num_logs < 3`). A script with high branching and risky operations (SQL / service / live-object lookups) but no logs is unobservable in production; a long but straight-line script with no branches needs no logs to debug. The AST rule fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire.
+[^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
 
-New AST-native checks (no legacy counterpart, add directly in the new pipeline):
+[^sr032]: `RepeatedQueryCheck` grades severity by similarity tier across both query primitives (`getSqlData`, `getData`): **error (T1)** for exact duplicate queries (same table, SELECT, WHERE); **warning (T2)** for same table + WHERE with different SELECT fields (suggested fix: union the SELECT); **info (T3)** for same table + SELECT whose WHEREs differ only in exactly one column's literal-equality value (suggested fix: merge with `column IN (val1, val2)`). The check sees flattened SQL strings — string-concatenation builders and one-shot variable assignments are resolved before comparison.
 
-| Rule ID | AST check class            | Status  |
-|---------|----------------------------|---------|
-| SR033   | `UnboundedLoopCheck`       | pending |
-| SR040   | `HardcodedSecretCheck`     | pending |
-| SR041   | `DivByZeroCheck`           | pending |
-| SR042   | `UnguardedFieldAccessCheck`| pending |
-| SR043   | `UnwrappedRiskyCallCheck`  | pending |
-| SR050   | `UnresolvedReferenceCheck` | pending |
-| SR055   | `ArrayAliasCheck`          | pending |
-| SR056   | `AssignOpMismatchCheck`    | pending |
-| SR057   | `CaseTypoVariableCheck`    | pending |
-| SR058   | `AutoCreateAssignCheck`    | pending |
-
-Update this table in the same PR that migrates (or adds) each check.
+[^sr091]: `TooFewLogsCheck` fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire. A long but straight-line script (no branches, no risky calls) needs no logs and is silent.
 
 ## 9. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
@@ -287,6 +242,3 @@ Update this table in the same PR that migrates (or adds) each check.
   from security, or do we write our own?
 - What defines "previous version" for SR08x — previous git commit, previous
   pack on disk, or a versioned store?
-- ~~Does the language have try/catch?~~ **Answered (`syntaxe.odt`):** yes —
-  `try { } onerror { }`, with an implicit typed `error` variable. SR043
-  now checks for it.
