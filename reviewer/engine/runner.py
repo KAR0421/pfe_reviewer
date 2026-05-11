@@ -45,6 +45,32 @@ def run_review(br) -> Report:
 
     ctx = CheckContext(bizrule=br, comments=comments)
     check_instances: list[Check] = [cls(ctx) for cls in CHECKS]
+
+    # BizRule-level dispatch: runs once per review, before any AST
+    # walk, on checks that inspect metadata (display_names, triggers,
+    # name, comment, scope) rather than script structure. Crashes are
+    # isolated as SR998 just like the AST dispatch below; the
+    # offending check still gets to participate in the AST walk.
+    for check in check_instances:
+        ctx._current_check = check
+        try:
+            check.visit_BizRule(br, ctx)
+        except Exception as exc:  # noqa: BLE001
+            ctx.findings.append(
+                Finding(
+                    rule_id="SR998",
+                    category="lang",
+                    severity="error",
+                    line=0,
+                    message=(
+                        f"Check {type(check).__name__} crashed in "
+                        f"visit_BizRule: {exc!r}"
+                    ),
+                    bizrule=br.name,
+                )
+            )
+    ctx._current_check = None
+
     _walk(tree, ctx, check_instances)
     return Report(rule_name=br.name, findings=tuple(ctx.findings))
 

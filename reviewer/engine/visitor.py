@@ -134,6 +134,20 @@ class Check:
         else:
             self.generic_visit(node)
 
+    def visit_BizRule(self, br, ctx: "CheckContext") -> None:
+        """Hook called once per ``BizRule`` before the script-AST walk.
+
+        Override in checks that operate on ``BizRule`` metadata
+        (``display_names``, ``triggers``, ``name``, ``comment``,
+        ``scope``) rather than on the parsed script. Findings emitted
+        from this hook should use ``line=0`` — the BizRule itself is
+        the location, not a specific script line.
+
+        Default implementation is a no-op so existing AST-only checks
+        need no changes.
+        """
+        return None
+
     def generic_visit(self, node: Node) -> None:  # noqa: D401
         """No-op fallback. The runner handles child traversal."""
         return None

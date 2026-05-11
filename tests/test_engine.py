@@ -161,3 +161,62 @@ def test_loop_and_try_stacks_balanced(isolated_checks) -> None:
     br2 = FakeBizRule(name="R6", script="z := 1;")
     run_review(br2)
     assert observed == [("z", False, False)]
+
+
+# ── BizRule-level dispatch (visit_BizRule) ─────────────────────────
+
+
+def test_visit_bizrule_hook_runs_before_ast_walk(isolated_checks) -> None:
+    """A check that overrides ``visit_BizRule`` must:
+
+    1. Be invoked exactly once per review.
+    2. See the same ``BizRule`` instance the runner received.
+    3. Have its emitted findings land in the final report (line=0
+       by the documented convention).
+    4. Run *before* the AST walk — verified here by recording event
+       ordering: ``visit_BizRule`` must appear before any
+       ``visit_<Node>`` event.
+    """
+    events: list[str] = []
+
+    @register_check(
+        rule_id="SR-T-META",
+        category="docs",
+        severity="info",
+        description="meta-dispatch test check",
+    )
+    class MetaCheck(Check):
+        def visit_BizRule(self, br, ctx: CheckContext) -> None:
+            events.append(f"BizRule:{br.name}")
+            ctx.emit(line=0, message=f"meta check saw {br.name}")
+
+        def visit_AssignStmt(self, node) -> None:  # noqa: D401
+            events.append("AssignStmt")
+
+    try:
+        br = FakeBizRule(name="META_R1", script="x := 1;")
+        report = run_review(br)
+
+        # 1+2: visit_BizRule called exactly once with this BizRule.
+        assert events.count("BizRule:META_R1") == 1
+        # 4: BizRule event precedes any AST event.
+        assert events.index("BizRule:META_R1") < events.index("AssignStmt")
+        # 3: finding lands in the report at line=0.
+        meta_findings = [
+            f for f in report.findings if f.rule_id == "SR-T-META"
+        ]
+        assert len(meta_findings) == 1
+        f = meta_findings[0]
+        assert f.line == 0
+        assert f.message == "meta check saw META_R1"
+        assert f.bizrule == "META_R1"
+        assert f.category == "docs"
+        assert f.severity == "info"
+    finally:
+        # The ``isolated_checks`` fixture swaps the CHECKS list with a
+        # local empty one, so MetaCheck only lives in that local list
+        # for the duration of this test — no global pollution. The
+        # ``register_check`` decorator appended to whatever ``CHECKS``
+        # was current at decoration time (the isolated list), so no
+        # manual unregister is required.
+        pass
