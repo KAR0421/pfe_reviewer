@@ -1,0 +1,4 @@
+// SR059 negative: every assigned variable is read at least once.
+a := 1;
+b := a + 2;
+return b;

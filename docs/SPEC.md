@@ -156,7 +156,7 @@ stable; pick the next free ID when adding a new check.
 | SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. | pending |
 | SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. | pending |
 | SR058 | info     | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an existence check first. The kernel silently creates a record when none matches. | pending |
-| SR059 | info     | Unused variable: assigned (`x := 1`) but never read. | pending |
+| SR059 | info     | Unused variable: assigned (`x := 1`) but never read. [^sr059] | done |
 
 #### Scope (technical)
 | ID    | Severity | Description | Status |
@@ -215,21 +215,20 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR059 — unused variable
-2. SR093 — empty onerror block
-3. SR094 — onerror without error context
-4. SR057 — case-typo variables
-5. SR034 — repeated field reads
-6. SR044 — dynamic SQL
-7. SR055 — array alias
-8. SR058 — unintended record auto-create
-9. SR011 — missing SMARTRULE_NAME
-10. SR060 — empty/malformed SMARTRULE_TRIGGER
-11. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
-12. SR062 — TRIGGER_TYPE not in valid enum set
-13. SR042 — guarded field access (flow analysis)
-14. SR041 — div by zero (flow analysis)
-15. SR002 — RULE_CODE convention regex (config-driven)
+1. SR093 — empty onerror block
+2. SR094 — onerror without error context
+3. SR057 — case-typo variables
+4. SR034 — repeated field reads
+5. SR044 — dynamic SQL
+6. SR055 — array alias
+7. SR058 — unintended record auto-create
+8. SR011 — missing SMARTRULE_NAME
+9. SR060 — empty/malformed SMARTRULE_TRIGGER
+10. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
+11. SR062 — TRIGGER_TYPE not in valid enum set
+12. SR042 — guarded field access (flow analysis)
+13. SR041 — div by zero (flow analysis)
+14. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -249,13 +248,13 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, ten
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, eleven
   checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR033,
-  SR090, SR091), full test suite green.
+  SR059, SR090, SR091), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR059, SR093, SR094,
-  SR057, SR034, SR044, SR055, SR058, SR011, SR060, SR061-intra, SR062,
-  SR042, SR041, SR002).
+  in the order documented in §6 "M2 build order" (SR093, SR094, SR057,
+  SR034, SR044, SR055, SR058, SR011, SR060, SR061-intra, SR062, SR042,
+  SR041, SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -284,6 +283,8 @@ comment + inline for `severity >= warning`).
 [^sr043]: Deferred pending review of real-world BizRule contexts where missing try/onerror is genuinely problematic. The blanket form (every risky call must be wrapped) is too noisy for this codebase.
 
 [^sr033]: `UnboundedLoopCheck` visits `WhileStmt`, `DoWhile`, and `ForCStyle` only — `foreach` and counter-`for` are bounded by language design. Two firing paths: (1) **trivial-infinite** when the condition is a non-zero `NumberLit` or non-empty `StringLit` (or a C-style `for` with no condition); (2) **unbounded condition** when the set of identifier / field-access string-forms in the condition is disjoint from the set of `AssignStmt` targets in the body (and in the C-for step). Function and method calls in the body do *not* count as mutations — only `:=` and `?=` mutate. Function and method *names* in callee position are not collected as condition variables either. A condition with no extractable identifiers (e.g. `while (getStatus())`) is silent: no signal to reason about.
+
+[^sr059]: `UnusedVariableCheck` walks each script once collecting (a) the first-line of every `AssignStmt` whose target is a bare `Identifier`, and (b) the set of `Identifier` names appearing in read positions. Counter-`for` and `foreach` loop variables are excluded from both sets — loop-introduced names are idiomatic to ignore. Function/method *names* in callee position are not reads; method *receivers* are. `?=` is treated as an assignment with no read semantics (purely an assign for SR059 purposes). Multiple assignments to the same name collapse onto the first one's line in the finding. Severity is `info`.
 
 ## 9. Open questions
 - Is there an authoritative list of valid object / class names the reviewer

@@ -1,0 +1,4 @@
+// SR059 positive: conditional-assign form ``?=`` is still an
+// assignment; ``flag`` is never read.
+flag ?= getDefault();
+log("done");

@@ -1,0 +1,8 @@
+// SR059 edge: a *string literal* and a *comment* both contain text
+// that looks like ``zombie := 0;``. The tokenizer drops the comment
+// and treats the string as an opaque token, so neither produces an
+// AssignStmt. Only ``msg`` is really assigned, and it is read by the
+// log call.
+// zombie := 0;
+msg := "zombie := 0;";
+log(msg);

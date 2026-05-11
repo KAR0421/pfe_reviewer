@@ -1,0 +1,6 @@
+// SR059 negative: multiple assignments to the same name with one read
+// silence the check — the last assignment is what's used.
+count := 0;
+count := count + 1;
+count := count * 2;
+return count;

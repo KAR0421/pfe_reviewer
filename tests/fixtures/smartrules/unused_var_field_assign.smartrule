@@ -1,0 +1,6 @@
+// SR059 negative-edge: ``obj.READY := 1`` is a field assignment, not a
+// bare-variable assignment. The target ``obj.READY`` is not a local
+// variable; the receiver ``obj`` is genuinely used (read on the LHS to
+// locate the field), so neither shape produces an SR059 finding.
+obj := getObject("MxThing", "ID42");
+obj.READY := 1;

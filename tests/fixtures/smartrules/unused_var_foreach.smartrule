@@ -1,0 +1,6 @@
+// SR059 negative-edge: foreach loop variable ``item`` is never read.
+// Per policy, loop-introduced variables are excluded.
+items := getList();
+foreach item in items do {
+    log("step");
+}

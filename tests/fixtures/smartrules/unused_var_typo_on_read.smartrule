@@ -1,0 +1,5 @@
+// SR059 positive: typo on the read side leaves the original assignment
+// unused. ``total`` is never read; the return statement references the
+// undefined ``totl`` instead.
+total := arg1 + arg2;
+return totl;

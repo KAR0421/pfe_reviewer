@@ -1,0 +1,6 @@
+// SR059 edge: ``obj.method(arg)`` is a method call. The receiver
+// chain (``obj``) is a read; the method name is not a variable.
+// Both ``obj`` and ``arg`` must be classified as read.
+obj := getObject("MxThing", "ID42");
+arg := compute();
+obj.update(arg);

@@ -1,0 +1,5 @@
+// SR059 negative-edge: counter-for loop variable ``i`` is never read
+// in the body. Per policy, loop-introduced variables are excluded.
+for i := 1 to 10 do {
+    log("tick");
+}
