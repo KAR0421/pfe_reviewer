@@ -1,0 +1,13 @@
+// SR057 positive: assignment is buried deep in nested structures,
+// the case-variant read sits at top level. Whole-script walk must
+// still pair them.
+if (mode = "A") {
+    foreach row in rows do {
+        try {
+            counter := counter + 1;
+        } onerror {
+            error.consume();
+        }
+    }
+}
+log(Counter);

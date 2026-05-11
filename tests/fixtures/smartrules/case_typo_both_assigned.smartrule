@@ -1,0 +1,7 @@
+// SR057 positive (canonical): both spellings assigned. Classic typo
+// where one branch wrote `contrib` and another wrote `Contrib` —
+// they are two distinct case-sensitive variables.
+contrib := 0;
+Contrib := computeShare();
+log(contrib);
+log(Contrib);

@@ -1,0 +1,7 @@
+// SR057 edge: a function `compute` is called and a variable
+// `Compute` is assigned. The callee is excluded from occurrences
+// (function names aren't variables in scope), so there is only one
+// real occurrence — must not fire.
+Compute := 0;
+result := compute(Compute);
+log(result);

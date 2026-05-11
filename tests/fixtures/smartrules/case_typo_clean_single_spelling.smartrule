@@ -1,0 +1,5 @@
+// SR057 negative: only one spelling exists (`amount`). No collision,
+// no finding.
+amount := 0;
+amount := amount + 1;
+log(amount);

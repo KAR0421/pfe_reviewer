@@ -1,0 +1,6 @@
+// SR057 positive: variable `total` is assigned, then a phantom
+// `Total` is read downstream — likely a typo on the read side that
+// silently picked up a never-defined identifier.
+total := computeTotal();
+log("done");
+return Total;

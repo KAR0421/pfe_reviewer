@@ -176,3 +176,111 @@ def test_sr059_real_pack_compute_template_order() -> None:
         "jurisdictionId",
         "effectDate",
     }
+
+
+# ════════════════════════════════════════════════════════════════════
+# SR057 — CaseTypoVariableCheck
+# ════════════════════════════════════════════════════════════════════
+
+def _sr057(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR057"]
+
+
+# ─── Positive ────────────────────────────────────────────────────────
+
+def test_sr057_both_assigned_fires() -> None:
+    """Canonical case: both ``contrib`` and ``Contrib`` are assigned
+    in the same rule. Two distinct variables; almost certainly a
+    typo.
+    """
+    br = _load("case_typo_both_assigned.smartrule")
+    findings = _sr057(br)
+    assert len(findings) == 1
+    f = findings[0]
+    # First occurrence of either spelling — ``contrib`` on line 4.
+    assert f.line == 4
+    assert f.severity == "info"
+    assert f.category == "lang"
+    assert "'Contrib'" in f.message
+    assert "'contrib'" in f.message
+    assert "case-typo" in f.message.lower()
+
+
+def test_sr057_assigned_vs_read_fires() -> None:
+    """``total`` is assigned, ``Total`` is only read downstream — the
+    read picked up a phantom variable. Must fire.
+    """
+    br = _load("case_typo_assigned_vs_read.smartrule")
+    findings = _sr057(br)
+    assert len(findings) == 1
+    assert findings[0].line == 4  # ``total`` on line 4
+
+
+def test_sr057_nested_assignment_still_paired() -> None:
+    """The assignment ``counter := counter + 1;`` lives inside an
+    if → foreach → try; the read ``log(Counter)`` is at top level.
+    The whole-script walk must still pair them.
+    """
+    br = _load("case_typo_nested_assignment.smartrule")
+    findings = _sr057(br)
+    assert len(findings) == 1
+    # First occurrence of either spelling sits inside the try, on
+    # the line of ``counter := counter + 1;`` (line 7).
+    assert findings[0].line == 7
+    assert "'Counter'" in findings[0].message
+    assert "'counter'" in findings[0].message
+
+
+# ─── Negative ────────────────────────────────────────────────────────
+
+def test_sr057_neither_assigned_silent() -> None:
+    """Both ``STATUS`` and ``Status`` are read-only — likely external
+    constants, not local variables. Out of scope; must not fire.
+    """
+    br = _load("case_typo_neither_assigned.smartrule")
+    assert _sr057(br) == []
+
+
+def test_sr057_single_spelling_silent() -> None:
+    """Only one spelling exists. No collision possible."""
+    br = _load("case_typo_clean_single_spelling.smartrule")
+    assert _sr057(br) == []
+
+
+def test_sr057_callee_vs_variable_silent() -> None:
+    """``compute(Compute)``: the callee ``compute`` is excluded from
+    occurrences (function names are not variables). Only the local
+    ``Compute`` remains — no collision.
+    """
+    br = _load("case_typo_callee_vs_variable.smartrule")
+    assert _sr057(br) == []
+
+
+# ─── Edge: comments and string literals ──────────────────────────────
+
+def test_sr057_ignores_strings_and_comments() -> None:
+    """Identifier-like text inside comments and string literals does
+    not produce AST identifiers, so no spurious collision.
+    """
+    br = _load("case_typo_in_string_or_comment.smartrule")
+    assert _sr057(br) == []
+
+
+# ─── Real-pack regression ────────────────────────────────────────────
+# Both real-pack fixtures are clean baselines for SR057. The
+# `compute_template_order.smartrule` fixture has
+# `reportData.P_VALUE[P_NAME='effectDate']` and a local `p_name`,
+# but `P_NAME` is the LHS of `=` inside a `TableSelector.condition`
+# — the column-context exclusion (see `_collect_case`) treats it as
+# a column name, not a variable, so SR057 stays silent.
+
+def test_sr057_real_pack_update_document_process_silent() -> None:
+    br = _load("update_document_process.smartrule")
+    assert _sr057(br) == []
+
+
+def test_sr057_real_pack_compute_template_order_silent() -> None:
+    br = _load("compute_template_order.smartrule")
+    assert _sr057(br) == []
+
+

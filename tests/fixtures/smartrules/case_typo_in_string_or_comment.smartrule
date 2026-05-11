@@ -1,0 +1,7 @@
+// SR057 edge: the only "case collision" lives in a comment and a
+// string literal. The tokenizer drops the comment and treats the
+// string as opaque, so the AST contains no second spelling. Must
+// not fire.
+// total / Total appears in this comment only.
+amount := 0;
+log("totals: total/Total");

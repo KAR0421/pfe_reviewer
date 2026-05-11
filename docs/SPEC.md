@@ -154,7 +154,7 @@ stable; pick the next free ID when adding a new check.
 | ID    | Severity | Description | Status |
 |-------|----------|-------------|--------|
 | SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. | pending |
-| SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. | pending |
+| SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. [^sr057] | done |
 | SR058 | info     | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an existence check first. The kernel silently creates a record when none matches. | pending |
 | SR059 | info     | Unused variable: assigned (`x := 1`) but never read. [^sr059] | done |
 
@@ -215,18 +215,17 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR057 — case-typo variables
-2. SR034 — repeated field reads
-3. SR044 — dynamic SQL
-4. SR055 — array alias
-5. SR058 — unintended record auto-create
-6. SR011 — missing SMARTRULE_NAME
-7. SR060 — empty/malformed SMARTRULE_TRIGGER
-8. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
-9. SR062 — TRIGGER_TYPE not in valid enum set
-10. SR042 — guarded field access (flow analysis)
-11. SR041 — div by zero (flow analysis)
-12. SR002 — RULE_CODE convention regex (config-driven)
+1. SR034 — repeated field reads
+2. SR044 — dynamic SQL
+3. SR055 — array alias
+4. SR058 — unintended record auto-create
+5. SR011 — missing SMARTRULE_NAME
+6. SR060 — empty/malformed SMARTRULE_TRIGGER
+7. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
+8. SR062 — TRIGGER_TYPE not in valid enum set
+9. SR042 — guarded field access (flow analysis)
+10. SR041 — div by zero (flow analysis)
+11. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -246,13 +245,13 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, thirteen
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, fourteen
   checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR033,
-  SR059, SR090, SR091, SR093, SR094), full test suite green.
+  SR057, SR059, SR090, SR091, SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR057,
-  SR034, SR044, SR055, SR058, SR011, SR060, SR061-intra, SR062, SR042,
-  SR041, SR002).
+  in the order documented in §6 "M2 build order" (SR034, SR044,
+  SR055, SR058, SR011, SR060, SR061-intra, SR062, SR042, SR041,
+  SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -273,6 +272,8 @@ comment + inline for `severity >= warning`).
 [^sr032]: `RepeatedQueryCheck` grades severity by similarity tier across both query primitives (`getSqlData`, `getData`): **error (T1)** for exact duplicate queries (same table, SELECT, WHERE); **warning (T2)** for same table + WHERE with different SELECT fields (suggested fix: union the SELECT); **info (T3)** for same table + SELECT whose WHEREs differ only in exactly one column's literal-equality value (suggested fix: merge with `column IN (val1, val2)`). The check sees flattened SQL strings — string-concatenation builders and one-shot variable assignments are resolved before comparison.
 
 [^sr091]: `TooFewLogsCheck` fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire. A long but straight-line script (no branches, no risky calls) needs no logs and is silent.
+
+[^sr057]: `CaseTypoVariableCheck` fires only when **at least one** of the case-variant spellings is a real assigned variable in the rule (bare-`Identifier` `:=` / `?=` target, not field/index assignment, not loop-introduced). When *neither* spelling is assigned, both are almost certainly external constants / enums / functions and out of scope. Identifiers in `Call.callee` position (function names) are excluded from occurrences. Identifiers on the LHS of a comparison operator (`=`, `!=`, `<`, `>`, `<=`, `>=`) inside a `TableSelector.condition` are treated as column names from the data model, not variables, and are excluded from occurrence collection — the same column-context rule is also applied by SR059's collector.
 
 [^sr044]: Reuses `_sql.py`'s query-flattening helper to share a "literal vs dynamic" classification with SR030 and SR032. A query is considered literal if it's a `StringLit` or a concatenation of `StringLit`s and identifier substitutions only. Anything else (unflattenable expression, computed at runtime) is dynamic and fires.
 

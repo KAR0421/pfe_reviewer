@@ -1,0 +1,6 @@
+// SR057 negative: neither `STATUS` nor `Status` is assigned in this
+// rule. Both are likely external constants / enum values; not our
+// concern. The check must stay silent.
+if (obj.kind = STATUS) {
+    obj.flag := Status;
+}
