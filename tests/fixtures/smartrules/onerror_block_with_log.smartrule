@@ -1,0 +1,7 @@
+// SR093 negative: onerror has a real log call — not empty.
+// SR094 may eventually have an opinion about this; SR093 must not.
+try {
+    obj.update(arg);
+} onerror {
+    msgerror("update failed");
+}

@@ -1,0 +1,8 @@
+// SR094 positive: onerror block aborts but never inspects `error`.
+// `abort` halts the script but the implicit error object is still
+// unconsumed at that point.
+try {
+    obj.update(arg);
+} onerror {
+    abort;
+}

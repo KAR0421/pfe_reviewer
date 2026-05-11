@@ -1,0 +1,8 @@
+// SR093 negative: onerror block has a single trivial assignment.
+// "Block exists but does nothing meaningful" is SR094's job; SR093
+// only cares about literally empty blocks. Must NOT fire.
+try {
+    obj.update(arg);
+} onerror {
+    handled := 1;
+}

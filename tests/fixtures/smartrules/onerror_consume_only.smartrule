@@ -1,0 +1,8 @@
+// SR094 negative: onerror consumes the implicit error via
+// `error.consume()`. Even with no log call, the error is properly
+// engaged with — the rule must stay silent.
+try {
+    obj.update(arg);
+} onerror {
+    error.consume();
+}

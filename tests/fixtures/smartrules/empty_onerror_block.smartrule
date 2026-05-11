@@ -1,0 +1,5 @@
+// SR093 positive: try with a literally empty onerror block.
+try {
+    obj.update(arg);
+} onerror {
+}

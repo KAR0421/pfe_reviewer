@@ -25,6 +25,7 @@ from ..ast.nodes import (
     Node,
     Script,
     Stmt,
+    TryStmt,
     WhileStmt,
 )
 from ..engine.registry import register_check
@@ -228,5 +229,120 @@ class TooFewLogsCheck(Check):
                 f"diagnostics: {logs} log call(s) but {complexity} "
                 f"branches/loops/risky calls. Production failures "
                 f"will be hard to trace."
+            ),
+        )
+
+
+# ── SR093 EmptyOnerrorBlockCheck ───────────────────────────────────
+
+
+@register_check(
+    rule_id="SR093",
+    category="logs",
+    severity="error",
+    description="Empty onerror block swallows errors silently",
+)
+class EmptyOnerrorBlockCheck(Check):
+    """Flag any ``try { ... } onerror { }`` whose ``onerror`` body is
+    a literally empty block.
+
+    Implements SPEC §6 SR093. An empty ``onerror`` block is the worst
+    possible error path: a real failure produces no log, no abort, no
+    signal at all — the only way to discover something went wrong is
+    downstream data corruption.
+
+    Scope is intentionally narrow:
+    - fire only when ``onerror_block`` is a ``Block`` with zero
+      statements;
+    - non-empty blocks (even ones that "do nothing useful" like a
+      single bare assignment) are SR094's territory, not this rule's;
+    - comments are dropped by the tokenizer before parsing, so an
+      ``onerror { /* TODO */ }`` is, structurally, ``onerror { }``
+      and is correctly flagged here.
+    """
+
+    def visit_TryStmt(self, node: TryStmt) -> None:
+        body = node.onerror_block
+        if isinstance(body, Block) and len(body.statements) == 0:
+            self.ctx.emit(
+                line=node.line,
+                message=(
+                    f"Empty onerror block at line {node.line}: errors "
+                    "will be silently swallowed."
+                ),
+            )
+
+
+# ── SR094 OnerrorWithoutErrorHandlingCheck ─────────────────────────
+
+
+def _references_error_object(root: Node) -> bool:
+    """True iff any ``FieldAccess`` whose target is an ``Identifier``
+    named ``error`` (case-insensitively) lives anywhere in ``root``.
+
+    That covers ``error.consume``, ``error.getMessage()``,
+    ``x := error.code``, ``if (error.severity > 0) ...`` — every shape
+    of "do something with the implicit error object".
+    """
+    if (
+        isinstance(root, FieldAccess)
+        and isinstance(root.target, Identifier)
+        and root.target.name.lower() == "error"
+    ):
+        return True
+    for child in root.children():
+        if _references_error_object(child):
+            return True
+    return False
+
+
+@register_check(
+    rule_id="SR094",
+    category="logs",
+    severity="warning",
+    description=(
+        "onerror block doesn't engage with the implicit error "
+        "(ScriptError) object"
+    ),
+)
+class OnerrorWithoutErrorHandlingCheck(Check):
+    """Flag a non-empty ``onerror`` block that never touches the
+    implicit ``error`` (``ScriptError``) object.
+
+    Implements SPEC §6 SR094. Real error handling means engaging the
+    implicit ``error`` variable through a field access or method call
+    — ``error.consume()`` marks the error handled, ``error.getMessage()``
+    extracts the message, and similar members exist. Without any
+    ``error.<something>`` reference the exception is neither consumed
+    nor inspected, and the runtime may keep propagating it even if the
+    block logs a message.
+
+    Log calls (``msginfo`` / ``msgerror`` / ``msgwarn``) are extras
+    for human visibility, not error handling: a block can log heavily
+    and still fail this rule. In that case the log preserves a trace,
+    but the error itself is unconsumed — hence ``warning``, not
+    ``error``: visible but not consumed, not a silent black hole
+    (that case is SR093).
+
+    Coexists with SR093 on the same ``TryStmt`` by construction:
+    empty block → SR093 fires and SR094 skips; non-empty block with
+    no ``error.<x>`` → SR094 fires and SR093 skips; non-empty block
+    that touches ``error`` → neither fires.
+    """
+
+    def visit_TryStmt(self, node: TryStmt) -> None:
+        body = node.onerror_block
+        # Empty / comment-only blocks are SR093's territory.
+        if isinstance(body, Block) and len(body.statements) == 0:
+            return
+        if _references_error_object(body):
+            return
+        self.ctx.emit(
+            line=node.line,
+            message=(
+                f"onerror block at line {node.line} doesn't engage "
+                "with the 'error' object: no error.<method> or "
+                "error.<field> access. The exception is not consumed "
+                "— even if logged, the runtime may keep propagating it."
             ),
         )

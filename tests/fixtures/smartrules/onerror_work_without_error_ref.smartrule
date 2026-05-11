@@ -1,0 +1,9 @@
+// SR094 positive: onerror does real-looking bookkeeping but never
+// references the `error` object. The work isn't error-handling — it
+// is just state mutation that happens to live in an onerror block.
+try {
+    obj.update(arg);
+} onerror {
+    retryCount := retryCount + 1;
+    lastFailureAt := now();
+}

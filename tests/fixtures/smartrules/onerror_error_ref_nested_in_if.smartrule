@@ -1,0 +1,12 @@
+// SR094 negative: the `error.<something>` reference lives deep
+// inside the onerror subtree (nested if), not at top level. The
+// recursive walk must find it and keep the rule silent.
+try {
+    obj.update(arg);
+} onerror {
+    if (retryAllowed) {
+        msgerror("retrying after: " + error.getMessage());
+    } else {
+        abort;
+    }
+}

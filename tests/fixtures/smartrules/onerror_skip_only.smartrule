@@ -1,0 +1,7 @@
+// SR094 positive: onerror block uses `skip` to continue iteration
+// but never engages the `error` object.
+try {
+    obj.update(arg);
+} onerror {
+    skip;
+}

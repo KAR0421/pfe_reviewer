@@ -170,8 +170,8 @@ stable; pick the next free ID when adding a new check.
 |-------|----------|-------------|--------|
 | SR090 | warning  | Verbose log call inside a loop. | done |
 | SR091 | info     | Long script with insufficient log density relative to its branching / loop / risky-call complexity. [^sr091] | done |
-| SR093 | error    | Empty `onerror` block: `try { ... } onerror { }` swallows errors silently. | pending |
-| SR094 | warning  | `onerror` block doesn't preserve error context. The block must do at least one of: read the implicit `error` variable, emit a log call (`msginfo`/`msgerror`/`msgwarn`), or propagate via `abort`/`skip`/`return`. | pending |
+| SR093 | error    | Empty `onerror` block: `try { ... } onerror { }` swallows errors silently. | done |
+| SR094 | warning  | `onerror` block doesn't engage with the implicit `error` (ScriptError) object — no `error.<method>` or `error.<field>` access anywhere in the block. Log calls (`msginfo`/`msgerror`/`msgwarn`) are additional visibility, not error handling. Without engaging `error.consume()` or `error.getMessage()` or similar, the exception is not consumed — even if logged, the runtime may keep propagating it. | done |
 
 ### Should Have — DB-connected or harder, scheduled in M4
 
@@ -215,20 +215,18 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR093 — empty onerror block
-2. SR094 — onerror without error context
-3. SR057 — case-typo variables
-4. SR034 — repeated field reads
-5. SR044 — dynamic SQL
-6. SR055 — array alias
-7. SR058 — unintended record auto-create
-8. SR011 — missing SMARTRULE_NAME
-9. SR060 — empty/malformed SMARTRULE_TRIGGER
-10. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
-11. SR062 — TRIGGER_TYPE not in valid enum set
-12. SR042 — guarded field access (flow analysis)
-13. SR041 — div by zero (flow analysis)
-14. SR002 — RULE_CODE convention regex (config-driven)
+1. SR057 — case-typo variables
+2. SR034 — repeated field reads
+3. SR044 — dynamic SQL
+4. SR055 — array alias
+5. SR058 — unintended record auto-create
+6. SR011 — missing SMARTRULE_NAME
+7. SR060 — empty/malformed SMARTRULE_TRIGGER
+8. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
+9. SR062 — TRIGGER_TYPE not in valid enum set
+10. SR042 — guarded field access (flow analysis)
+11. SR041 — div by zero (flow analysis)
+12. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -248,11 +246,11 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, eleven
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, thirteen
   checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR033,
-  SR059, SR090, SR091), full test suite green.
+  SR059, SR090, SR091, SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR093, SR094, SR057,
+  in the order documented in §6 "M2 build order" (SR057,
   SR034, SR044, SR055, SR058, SR011, SR060, SR061-intra, SR062, SR042,
   SR041, SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the

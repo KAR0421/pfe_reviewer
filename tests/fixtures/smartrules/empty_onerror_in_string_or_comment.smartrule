@@ -1,0 +1,7 @@
+// SR093 edge: text that looks like ``try { } onerror { }`` lives only
+// inside a comment and a string literal. The tokenizer strips the
+// comment and treats the string as opaque, so the AST contains no
+// TryStmt at all. Must NOT fire.
+// try { } onerror { }
+msg := "try { foo(); } onerror { }";
+log(msg);

@@ -1,0 +1,8 @@
+// SR094 positive: onerror block logs but never touches `error`.
+// The runtime may keep propagating the unconsumed exception even
+// though the operator sees the log line.
+try {
+    obj.update(arg);
+} onerror {
+    msgerror("update failed");
+}

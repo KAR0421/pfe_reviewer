@@ -1,0 +1,9 @@
+// SR094 negative: onerror logs the message extracted from the
+// implicit error object. Both observability and engagement are
+// present — must not fire.
+try {
+    obj.update(arg);
+} onerror {
+    msgerror("update failed: " + error.getMessage());
+    error.consume();
+}

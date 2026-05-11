@@ -1,0 +1,7 @@
+// SR093 edge: onerror block contains only a comment. The tokenizer
+// strips comments, so the parser sees ``onerror { }`` — must fire.
+try {
+    rows := getSqlData("SELECT id FROM t");
+} onerror {
+    // TODO: handle this someday
+}
