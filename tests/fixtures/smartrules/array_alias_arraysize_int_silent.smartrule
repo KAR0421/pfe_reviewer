@@ -1,0 +1,4 @@
+a := array(1, 2, 3);
+n := arraysize(a);
+b := n;
+b := b + 1;

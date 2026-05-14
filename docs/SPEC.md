@@ -142,7 +142,6 @@ stable; pick the next free ID when adding a new check.
 | SR041 | error    | Division where the right operand could be zero. | pending |
 | SR042 | warning  | Field access on a value that has not been guarded against null or empty. The check tracks both `if (obj != null) { ...obj.F... }` (then-branch guard) and `if (obj = null) { ... } else { ...obj.F... }` (else-branch guard) — guard tracking is structural via the engine's branch awareness. | pending |
 | SR043 | warning  | Risky call (`getSqlData`, `callService`, `getObjects`, `obj.set`, `obj.method(...)`) not wrapped in a `try { } onerror { }` block. [^sr043] | should-have |
-| SR044 | warning  | Dynamic SQL string passed to `getSqlData` / `getData` (SQL-injection shape). Fires on `getSqlData(queryStr)` where `queryStr` is computed elsewhere, or on concatenations whose non-literal pieces sit in structural positions (e.g. `"SELECT * FROM " + tableName + " WHERE ..."`). [^sr044] | pending |
 
 #### Dependencies
 | ID    | Severity | Description | Status |
@@ -153,7 +152,7 @@ stable; pick the next free ID when adding a new check.
 #### Language semantics (revealed by `syntaxe.odt`)
 | ID    | Severity | Description | Status |
 |-------|----------|-------------|--------|
-| SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. | pending |
+| SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. [^sr055] | done |
 | SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. [^sr057] | done |
 | SR058 | warning  | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an enclosing existence check on the same selector. The kernel silently creates a row when none matches. [^sr058] | done |
 | SR059 | info     | Unused variable: assigned (`x := 1`) but never read. [^sr059] | done |
@@ -215,10 +214,8 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR044 — dynamic SQL
-2. SR055 — array alias
-3. SR042 — guarded field access (flow analysis)
-4. SR041 — div by zero (flow analysis)
+1. SR042 — guarded field access (flow analysis)
+2. SR041 — div by zero (flow analysis)
 
 ## 7. Output
 
@@ -238,13 +235,12 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, twenty-one
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, twenty-two
   checks (SR002, SR010, SR011, SR012.1, SR020, SR021, SR030, SR031, SR032,
-  SR033, SR034, SR057, SR058, SR059, SR060, SR061, SR062, SR090,
+  SR033, SR034, SR055, SR057, SR058, SR059, SR060, SR061, SR062, SR090,
   SR091, SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR044, SR055,
-  SR042, SR041).
+  in the order documented in §6 "M2 build order" (SR042, SR041).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -260,6 +256,8 @@ comment + inline for `severity >= warning`).
 
 [^sr002]: `RuleCodeNamingCheck` enforces the regex `^[A-Z][A-Z0-9_]{2,}$` on `BizRule.name` (the `RULE_CODE`). Concretely: the first character must be an uppercase ASCII letter; remaining characters may be uppercase letters, digits, or underscores; minimum total length is 3. Real production codes (`UPDATE_DOCUMENT_PROCESS`, `TRANSCO_NPC23`, `COMPUTE_TEMPLATE_ORDER`) all match. Common defects all fail: lowercase (`myRule`), leading digit (`1_RULE`), hyphen or other punctuation (`RULE-X`), whitespace (`RULE NAME`), and stub names too short to be meaningful (`RU`). The check is BizRule-level (overrides `visit_BizRule`) and emits with `line=0` because the offending location is the rule's metadata, not any line of the script. The pattern lives as a module-level constant `RULE_CODE_PATTERN` in `metadata.py` so a future config-driven variant (see M5) can swap it out cleanly.
 
+[^sr055]: `ArrayAliasCheck` recognises array-typed variables by tracking which locals are assigned from a call to one of the array-returning built-ins: `array`, `arraycopy`, `arrayappend`, `arrayremove`, `arrayunion`, `arraysubset`, `arraysubfind`, `arraysort`. `arraysize` is **not** in this set — it returns the integer length, not an array, so `n := arraysize(a)` does not tag `n`. Once a variable is array-typed, a bare-Identifier-to-bare-Identifier assignment `b := a` (RHS *not* wrapped in `arraycopy(...)`) is recorded as a candidate alias and `b` becomes array-typed too, supporting transitive chains like `a := array(...); b := arrayremove(a, 1); c := b`. After the source-order walk, each candidate `(b, a, alias_line)` is gated by a "later mutation" check: at least one source line strictly greater than `alias_line` must re-assign or indexed-write either side (`b := …`, `a[i] := …`). Aliases without a later mutation may be a deliberate second name for the same array, so they stay silent. Field/`TableSelector` writes never participate in aliasing; counter-`for` and `foreach` loop-introduced names are excluded from both sides; the `arraycopy(...)` form is the documented correct pattern and is silent by construction.
+
 [^sr012_1]: SR012.1 counts `//` and `/* ... */` comments from `CheckContext.comments` (tokenizer side-channel) and complexity from `_count_complexity` (shared with SR091). The 1:12 ratio targets non-obvious code: assignments don't need comments, but branches and risky calls usually do.
 
 [^sr031]: `NestedLoopCheck` grades severity by bound-ness and side-effects: **info** when both loops are provably bounded by literal counters, **error** when the inner body contains an expensive call (SQL, service, object lookup, or any method call), **warning** otherwise.
@@ -269,8 +267,6 @@ comment + inline for `severity >= warning`).
 [^sr091]: `TooFewLogsCheck` fires when **stmts > 50** AND **log_calls × 5 < complexity**, where complexity = branches + loops + risky calls. The 1-log-per-5-constructs ratio is conservative — most rules pass; only the genuinely under-instrumented ones fire. A long but straight-line script (no branches, no risky calls) needs no logs and is silent.
 
 [^sr057]: `CaseTypoVariableCheck` fires only when **at least one** of the case-variant spellings is a real assigned variable in the rule (bare-`Identifier` `:=` / `?=` target, not field/index assignment, not loop-introduced). When *neither* spelling is assigned, both are almost certainly external constants / enums / functions and out of scope. Identifiers in `Call.callee` position (function names) are excluded from occurrences. Identifiers on the LHS of a comparison operator (`=`, `!=`, `<`, `>`, `<=`, `>=`) inside a `TableSelector.condition` are treated as column names from the data model, not variables, and are excluded from occurrence collection — the same column-context rule is also applied by SR059's collector.
-
-[^sr044]: Reuses `_sql.py`'s query-flattening helper to share a "literal vs dynamic" classification with SR030 and SR032. A query is considered literal if it's a `StringLit` or a concatenation of `StringLit`s and identifier substitutions only. Anything else (unflattenable expression, computed at runtime) is dynamic and fires.
 
 [^sr062]: Valid TRIGGER_TYPE integer values per `schema.xml`'s `RULE_TRIGGER_TYPE` simple type are: 10, 11, 12, 13, 14, 20, 21, 30, 31, 40, 50, 51, 60. Anything outside this set fires.
 

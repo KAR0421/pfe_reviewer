@@ -7,6 +7,7 @@ typos, unintended record auto-create, and unused variables.
 from __future__ import annotations
 
 from ..ast.nodes import (
+    ArrayIndex,
     AssignStmt,
     BinaryOp,
     Call,
@@ -465,3 +466,231 @@ class AutoCreateAssignCheck(Check):
                 " before assigning."
             ),
         )
+
+
+# SR055_MARKER
+
+# ── SR055 ArrayAliasCheck ──────────────────────────────────────────
+
+
+# Built-in callees whose return value is an array. A bare-Identifier
+# assignment ``x := <call>`` where the callee name (case-sensitive)
+# is in this set tags ``x`` as array-typed from that line forward.
+# ``arraysize`` is *not* in this set: it returns the integer length,
+# not an array, so ``n := arraysize(a)`` does not tag ``n``.
+ARRAY_RETURNING_BUILTINS: frozenset[str] = frozenset({
+    "array",
+    "arraycopy",
+    "arrayappend",
+    "arrayremove",
+    "arrayunion",
+    "arraysubset",
+    "arraysubfind",
+    "arraysort",
+})
+
+
+@register_check(
+    rule_id="SR055",
+    category="lang",
+    severity="warning",
+    description=(
+        "Array alias: ``b := a`` between array-typed variables with "
+        "no subsequent ``arraycopy`` — mutations to ``b`` will "
+        "affect ``a``"
+    ),
+)
+class ArrayAliasCheck(Check):
+    """Flag a plain array-to-array assignment ``b := a`` that is
+    followed by a mutation of either side.
+
+    Implements SPEC §6 SR055. In this language assigning one array
+    variable to another aliases them — both names refer to the same
+    underlying array, so any mutation through one is visible through
+    the other. The intentional way to copy is ``b := arraycopy(a);``.
+
+    Detection is whole-script in two passes over a single
+    source-order event log:
+
+    1. Walk the script, collecting events for every ``AssignStmt``
+       whose target is a bare ``Identifier`` and for every indexed
+       assignment ``b[i] := v`` (target is ``ArrayIndex`` whose
+       ``array`` is a bare ``Identifier``). A bare-Identifier
+       assignment whose RHS is a ``Call`` to one of
+       ``ARRAY_RETURNING_BUILTINS`` (or a bare ``Identifier``
+       already known to be array-typed) tags the LHS as array-typed
+       from that point on. A bare-Identifier-to-bare-Identifier
+       assignment whose RHS is array-typed and whose RHS is *not*
+       wrapped in ``arraycopy(...)`` is recorded as a candidate
+       alias ``(b, a, line)`` and ``b`` becomes array-typed too.
+
+    2. After the walk, for each candidate ``(b, a, alias_line)``,
+       scan the event log for a *mutation* of either ``b`` or ``a``
+       at any source line strictly greater than ``alias_line``.
+       A mutation is either a re-assignment (``b := …``) or an
+       indexed write (``b[i] := …`` / ``a[i] := …``). If found,
+       fire at ``alias_line``; otherwise stay silent (the alias may
+       be deliberate — just a different name for the same array).
+
+    Loop-introduced names (``for i := …`` and ``foreach x in …``)
+    are excluded from candidate-alias targets/sources: loop
+    variables aren't general variables, and using one as either
+    side of an alias is rare enough that the false-positive cost
+    isn't worth it.
+
+    The ``arraycopy(...)`` call on the RHS is the documented
+    correct pattern; it tags the LHS as array-typed but does not
+    record an alias.
+    """
+
+    def visit_Script(self, node: Script) -> None:
+        # Loop-introduced names — excluded from alias bookkeeping.
+        loop_vars: set[str] = set()
+        self._collect_loop_vars(node, loop_vars)
+
+        # Source-order events. ``kind`` is one of:
+        #   "assign_array_typed"  payload=name           (LHS now array-typed)
+        #   "assign_other"        payload=name           (LHS no longer array-typed)
+        #   "alias"               payload=(b, a)         (candidate alias)
+        #   "index_write"         payload=name           (b[i] := …)
+        events: list[tuple[str, object, int]] = []
+        array_typed: set[str] = set()
+        candidates: list[tuple[str, str, int]] = []  # (b, a, line)
+
+        for stmt in self._iter_stmts(node):
+            self._classify_stmt(stmt, array_typed, candidates, loop_vars, events)
+
+        # Pass 2: for each candidate, look for a later mutation.
+        for b, a, alias_line in candidates:
+            mut_line = self._find_later_mutation(events, {b, a}, alias_line)
+            if mut_line is None:
+                continue
+            self.ctx.emit(
+                line=alias_line,
+                message=(
+                    f"Array alias at line {alias_line}: '{b} := {a}' "
+                    "aliases both variables to the same array. A later "
+                    f"mutation (line {mut_line}) will affect both. Use "
+                    f"'arraycopy({a})' if an independent copy is intended."
+                ),
+            )
+
+    # ── Helpers ──────────────────────────────────────────────────
+
+    def _iter_stmts(self, node: Node):
+        """Yield every node in source order (pre-order DFS).
+
+        Statement classification looks at ``AssignStmt`` nodes
+        wherever they appear (top-level or nested in branches/loops/
+        try blocks). The walk visits children in the order
+        ``Node.children()`` yields them.
+        """
+        yield node
+        for child in node.children():
+            yield from self._iter_stmts(child)
+
+    def _collect_loop_vars(self, node: Node, into: set[str]) -> None:
+        if isinstance(node, ForCounter):
+            into.add(node.var.name)
+        elif isinstance(node, ForeachList):
+            into.add(node.var.name)
+        for child in node.children():
+            self._collect_loop_vars(child, into)
+
+    def _classify_stmt(
+        self,
+        stmt: Node,
+        array_typed: set[str],
+        candidates: list[tuple[str, str, int]],
+        loop_vars: set[str],
+        events: list[tuple[str, object, int]],
+    ) -> None:
+        if not isinstance(stmt, AssignStmt):
+            return
+        target = stmt.target
+        line = stmt.line
+
+        # Indexed write: ``b[i] := v`` — mutation of ``b``.
+        if isinstance(target, ArrayIndex) and isinstance(target.array, Identifier):
+            events.append(("index_write", target.array.name, line))
+            return
+
+        # Anything other than a bare-Identifier target is out of scope:
+        # field/TableSelector writes never participate in aliasing.
+        if not isinstance(target, Identifier):
+            return
+
+        name = target.name
+        value = stmt.value
+
+        # Loop-introduced names: excluded from alias bookkeeping.
+        if name in loop_vars:
+            return
+
+        # 1) RHS is an arraycopy(...) call — LHS becomes array-typed,
+        #    but NOT an alias (this is the documented correct copy).
+        if (
+            isinstance(value, Call)
+            and isinstance(value.callee, Identifier)
+            and value.callee.name == "arraycopy"
+        ):
+            array_typed.add(name)
+            events.append(("assign_array_typed", name, line))
+            return
+
+        # 2) RHS is any other array-returning built-in call → array-typed.
+        if (
+            isinstance(value, Call)
+            and isinstance(value.callee, Identifier)
+            and value.callee.name in ARRAY_RETURNING_BUILTINS
+        ):
+            array_typed.add(name)
+            events.append(("assign_array_typed", name, line))
+            return
+
+        # 3) RHS is a bare Identifier referring to an array-typed var,
+        #    excluding loop variables → alias candidate.
+        if (
+            isinstance(value, Identifier)
+            and value.name in array_typed
+            and value.name not in loop_vars
+        ):
+            candidates.append((name, value.name, line))
+            array_typed.add(name)
+            events.append(("alias", (name, value.name), line))
+            return
+
+        # 4) Anything else — LHS becomes non-array-typed. If it was
+        #    previously tagged, drop the tag (re-assigning ``b := 5``
+        #    after ``b := a`` ends ``b``'s array-typed status). The
+        #    re-assignment itself counts as a mutation of ``b``.
+        if name in array_typed:
+            array_typed.discard(name)
+        events.append(("assign_other", name, line))
+
+    def _find_later_mutation(
+        self,
+        events: list[tuple[str, object, int]],
+        names: set[str],
+        after_line: int,
+    ) -> int | None:
+        """Return the first line strictly greater than ``after_line``
+        on which any name in ``names`` is mutated, or ``None``.
+
+        A mutation is either an ``"index_write"`` event or a
+        re-assignment (``"assign_array_typed"`` or ``"assign_other"``).
+        An ``"alias"`` event with the same target also counts as a
+        re-assignment.
+        """
+        for kind, payload, line in events:
+            if line <= after_line:
+                continue
+            if kind == "index_write" and payload in names:
+                return line
+            if kind in ("assign_array_typed", "assign_other") and payload in names:
+                return line
+            if kind == "alias":
+                b, _a = payload  # type: ignore[misc]
+                if b in names:
+                    return line
+        return None

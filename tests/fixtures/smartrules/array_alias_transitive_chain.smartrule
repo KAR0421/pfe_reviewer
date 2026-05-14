@@ -1,0 +1,4 @@
+a := array(1, 2, 3);
+b := arrayremove(a, 1);
+c := b;
+c[0] := 99;

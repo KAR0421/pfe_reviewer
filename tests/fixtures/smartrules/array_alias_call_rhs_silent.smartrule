@@ -1,0 +1,4 @@
+a := array(1, 2, 3);
+otherArr := array(4, 5);
+b := arrayunion(a, otherArr);
+b[0] := 99;

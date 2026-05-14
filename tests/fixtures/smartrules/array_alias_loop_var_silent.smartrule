@@ -1,0 +1,4 @@
+a := array(1, 2, 3);
+foreach b in a do {
+    log(b);
+}

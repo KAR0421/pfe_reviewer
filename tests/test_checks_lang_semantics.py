@@ -428,3 +428,132 @@ def test_sr058_real_pack_compute_template_order_documented() -> None:
     for f in findings:
         assert f.severity == "warning"
         assert f.category == "lang"
+
+# ════════════════════════════════════════════════════════════════════
+# SR055 — ArrayAliasCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+def _sr055(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR055"]
+
+
+# ── SR055 Positive (fires) ─────────────────────────────────────────
+
+
+def test_sr055_simple_alias_then_mutation_fires() -> None:
+    br = _load("array_alias_simple_mutation.smartrule")
+    findings = _sr055(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 2  # the alias line
+    assert f.severity == "warning"
+    assert f.category == "lang"
+    assert "'b := a'" in f.message
+    assert "line 3" in f.message  # mutation line referenced
+    assert "arraycopy(a)" in f.message
+
+
+def test_sr055_source_mutation_after_alias_fires() -> None:
+    """The mutation may be on the *source* (a) rather than the alias
+    (b) — either side counts."""
+    br = _load("array_alias_source_mutation.smartrule")
+    findings = _sr055(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+
+
+def test_sr055_transitive_chain_fires_on_inner_alias() -> None:
+    """ := arrayremove(a, 1) makes  array-typed; c := b is
+    then an alias candidate. Mutation through c[0] := 99 fires on
+    the c := b line, not on  := arrayremove(...) (which is a
+    Call RHS and not the alias pattern).
+    """
+    br = _load("array_alias_transitive_chain.smartrule")
+    findings = _sr055(br)
+    assert len(findings) == 1
+    assert findings[0].line == 3  # the c := b line
+    assert "'c := b'" in findings[0].message
+
+
+# ── SR055 Negative (silent) ────────────────────────────────────────
+
+
+def test_sr055_arraycopy_rhs_silent() -> None:
+    """The documented correct pattern:  := arraycopy(a)."""
+    br = _load("array_alias_arraycopy_silent.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_alias_without_mutation_silent() -> None:
+    """An alias with no later mutation may be deliberate (just a
+    different name for the same array). Don't report."""
+    br = _load("array_alias_no_mutation_silent.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_foreach_iterable_read_silent() -> None:
+    """oreach x in b do { ... } reads , doesn't mutate it."""
+    br = _load("array_alias_foreach_read_silent.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_non_array_rhs_silent() -> None:
+    """ is an integer;  := a is not an array alias. Not in
+    scope, no finding even though  is later re-assigned."""
+    br = _load("array_alias_non_array_rhs_silent.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_arraysize_returns_int_silent() -> None:
+    """
+ := arraysize(a) makes 
+ an integer (arraysize returns
+    int, not an array).  := n is therefore not an array alias.
+    """
+    br = _load("array_alias_arraysize_int_silent.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_call_rhs_not_an_alias_silent() -> None:
+    """ := arrayunion(a, otherArr) makes  array-typed but is
+    a Call, not the alias pattern. Even with a later mutation
+    [0] := 99, no finding."""
+    br = _load("array_alias_call_rhs_silent.smartrule")
+    assert _sr055(br) == []
+
+
+# ── SR055 Edge ─────────────────────────────────────────────────────
+
+
+def test_sr055_in_string_or_comment_silent() -> None:
+    """Tokenizer drops comments and treats string literals as opaque.
+    The AST never sees the  := a text inside them."""
+    br = _load("array_alias_in_string_or_comment.smartrule")
+    assert _sr055(br) == []
+
+
+def test_sr055_loop_var_excluded_silent() -> None:
+    """oreach b in a introduces  as a loop variable, excluded
+    from alias bookkeeping. No finding."""
+    br = _load("array_alias_loop_var_silent.smartrule")
+    assert _sr055(br) == []
+
+
+# ── SR055 Real-pack regression ─────────────────────────────────────
+
+
+def test_sr055_real_pack_update_document_process_documented() -> None:
+    br = _load("update_document_process.smartrule")
+    findings = _sr055(br)
+    for f in findings:
+        assert f.severity == "warning"
+        assert f.category == "lang"
+
+
+def test_sr055_real_pack_compute_template_order_documented() -> None:
+    br = _load("compute_template_order.smartrule")
+    findings = _sr055(br)
+    for f in findings:
+        assert f.severity == "warning"
+        assert f.category == "lang"
