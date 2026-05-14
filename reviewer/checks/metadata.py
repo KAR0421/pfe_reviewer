@@ -1,14 +1,16 @@
-"""BizRule-level metadata checks (SR011, SR060, SR061, SR062).
+"""BizRule-level metadata checks (SR002, SR011, SR060, SR061, SR062).
 
-All four operate on the ``BizRule`` dataclass fields populated by
-``parser.extract_bizrules`` — ``display_names`` (the
-``T_SMARTRULE_NAME`` table) and ``triggers`` (the
-``T_SMARTRULE_TRIGGER`` table) — not on the parsed script AST. They
-therefore override ``visit_BizRule`` and emit findings with
+All operate on the ``BizRule`` dataclass fields populated by
+``parser.extract_bizrules`` — ``name`` (the ``RULE_CODE``),
+``display_names`` (the ``T_SMARTRULE_NAME`` table) and ``triggers``
+(the ``T_SMARTRULE_TRIGGER`` table) — not on the parsed script AST.
+They therefore override ``visit_BizRule`` and emit findings with
 ``line=0``: the offending location is the rule's metadata block, not
 any specific line of the ``IMPACT`` script.
 """
 from __future__ import annotations
+
+import re
 
 from ..engine.registry import register_check
 from ..engine.visitor import Check, CheckContext
@@ -252,3 +254,48 @@ class InvalidTriggerTypeCheck(Check):
                         "12, 13, 14, 20, 21, 30, 31, 40, 50, 51, 60."
                     ),
                 )
+
+
+# ── SR002 RuleCodeNamingCheck ─────────────────────────────────────
+
+
+# Project naming convention for ``RULE_CODE``: must start with an
+# uppercase letter, then at least two more characters drawn from
+# uppercase letters, digits, or underscores (minimum total length 3).
+# No lowercase, no whitespace, no punctuation other than underscore.
+RULE_CODE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]{2,}$")
+
+
+@register_check(
+    rule_id="SR002",
+    category="naming",
+    severity="warning",
+    description="BizRule RULE_CODE does not follow naming convention",
+)
+class RuleCodeNamingCheck(Check):
+    """Flag a ``RULE_CODE`` that violates the project naming convention.
+
+    Implements SPEC §6 SR002. The convention is enforced by
+    ``RULE_CODE_PATTERN``: ``^[A-Z][A-Z0-9_]{2,}$``. Real production
+    codes like ``UPDATE_DOCUMENT_PROCESS`` and ``TRANSCO_NPC23`` match
+    cleanly; common defects (lowercase, leading digit, hyphen, space,
+    too-short stub) all fail.
+    """
+
+    def visit_BizRule(self, br, ctx: CheckContext) -> None:
+        name = getattr(br, "name", None)
+        if name is None:
+            return
+        if RULE_CODE_PATTERN.match(name):
+            return
+        ctx.emit(
+            line=0,
+            message=(
+                f"RULE_CODE '{name}' does not follow naming "
+                "convention. Required: at least 3 characters, "
+                "uppercase letters / digits / underscores only, "
+                "must start with a letter."
+            ),
+        )
+
+

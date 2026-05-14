@@ -109,7 +109,7 @@ stable; pick the next free ID when adding a new check.
 | ID    | Severity | Description | Status |
 |-------|----------|-------------|--------|
 | SR001 | warning  | Generic / ambiguous variable names (`tmp1`, `varX`, `temp`). | agentic |
-| SR002 | warning  | BizRule `RULE_CODE` does not follow project naming convention. | pending |
+| SR002 | warning  | BizRule `RULE_CODE` does not follow project naming convention. [^sr002] | done |
 | SR003 | info     | Rule name / code mismatch with its documented purpose. | agentic |
 
 #### Minimal documentation
@@ -219,7 +219,6 @@ The remaining Must-Have checks ship in this order:
 2. SR055 — array alias
 3. SR042 — guarded field access (flow analysis)
 4. SR041 — div by zero (flow analysis)
-5. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -239,13 +238,13 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, twenty
-  checks (SR010, SR011, SR012.1, SR020, SR021, SR030, SR031, SR032,
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, twenty-one
+  checks (SR002, SR010, SR011, SR012.1, SR020, SR021, SR030, SR031, SR032,
   SR033, SR034, SR057, SR058, SR059, SR060, SR061, SR062, SR090,
   SR091, SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
   in the order documented in §6 "M2 build order" (SR044, SR055,
-  SR042, SR041, SR002).
+  SR042, SR041).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -254,10 +253,12 @@ comment + inline for `severity >= warning`).
   version diff (SR080–SR082), SR022 (promoted out of M2), and SR092.
 - **M5 — Agentic checks and quality.** LLM-driven checks for the
   semantic patterns marked `agentic` in §6 (SR001, SR003, SR012.2,
-  SR040, plus SR002 if config-driven regex turns out insufficient),
+  SR040, plus SR002 if the static regex turns out insufficient),
   refactor hints, scoring, and PR-level checks.
 
 [^sr020]: `StaticConditionCheck` is graded **error** uniformly: a literal-equals-literal sub-expression like `1 = 1` is wrong regardless of what surrounds it — `and x` doesn't redeem it, it just hides leftover debug code. Bare `if (x)` is *not* flagged because it is the idiomatic null/truthy check in this language.
+
+[^sr002]: `RuleCodeNamingCheck` enforces the regex `^[A-Z][A-Z0-9_]{2,}$` on `BizRule.name` (the `RULE_CODE`). Concretely: the first character must be an uppercase ASCII letter; remaining characters may be uppercase letters, digits, or underscores; minimum total length is 3. Real production codes (`UPDATE_DOCUMENT_PROCESS`, `TRANSCO_NPC23`, `COMPUTE_TEMPLATE_ORDER`) all match. Common defects all fail: lowercase (`myRule`), leading digit (`1_RULE`), hyphen or other punctuation (`RULE-X`), whitespace (`RULE NAME`), and stub names too short to be meaningful (`RU`). The check is BizRule-level (overrides `visit_BizRule`) and emits with `line=0` because the offending location is the rule's metadata, not any line of the script. The pattern lives as a module-level constant `RULE_CODE_PATTERN` in `metadata.py` so a future config-driven variant (see M5) can swap it out cleanly.
 
 [^sr012_1]: SR012.1 counts `//` and `/* ... */` comments from `CheckContext.comments` (tokenizer side-channel) and complexity from `_count_complexity` (shared with SR091). The 1:12 ratio targets non-obvious code: assignments don't need comments, but branches and risky calls usually do.
 

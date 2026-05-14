@@ -341,3 +341,86 @@ def test_sr062_real_pack_silent() -> None:
         brs = extract_bizrules(str(REPO_ROOT / pack))
         for target in brs:
             assert _findings(target, "SR062", pack_bizrules=brs) == []
+
+
+# ════════════════════════════════════════════════════════════════════
+# SR002 — RuleCodeNamingCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+# ── Positive (fires) ──────────────────────────────────────────────
+
+
+def test_sr002_lowercase_letters_fires() -> None:
+    br = _make(name="myRule")
+    findings = _findings(br, "SR002")
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 0
+    assert f.severity == "warning"
+    assert f.category == "naming"
+    assert "'myRule'" in f.message
+    assert "naming convention" in f.message
+
+
+def test_sr002_leading_digit_fires() -> None:
+    br = _make(name="1_RULE")
+    findings = _findings(br, "SR002")
+    assert len(findings) == 1
+    assert "'1_RULE'" in findings[0].message
+
+
+def test_sr002_hyphen_fires() -> None:
+    br = _make(name="RULE-X")
+    findings = _findings(br, "SR002")
+    assert len(findings) == 1
+    assert "'RULE-X'" in findings[0].message
+
+
+def test_sr002_too_short_fires() -> None:
+    """Two characters fails the ``{2,}`` quantifier on the trailing run."""
+    br = _make(name="RU")
+    findings = _findings(br, "SR002")
+    assert len(findings) == 1
+    assert "'RU'" in findings[0].message
+
+
+def test_sr002_space_fires() -> None:
+    br = _make(name="RULE NAME")
+    findings = _findings(br, "SR002")
+    assert len(findings) == 1
+    assert "'RULE NAME'" in findings[0].message
+
+
+# ── Negative (silent) ─────────────────────────────────────────────
+
+
+def test_sr002_canonical_uppercase_silent() -> None:
+    br = _make(name="UPDATE_DOCUMENT_PROCESS")
+    assert _findings(br, "SR002") == []
+
+
+def test_sr002_with_digits_silent() -> None:
+    br = _make(name="TRANSCO_NPC23")
+    assert _findings(br, "SR002") == []
+
+
+def test_sr002_minimum_length_silent() -> None:
+    """Three uppercase letters is the smallest acceptable code."""
+    br = _make(name="RULE")
+    assert _findings(br, "SR002") == []
+
+
+# ── Real-pack regression ──────────────────────────────────────────
+
+
+def test_sr002_real_pack_silent() -> None:
+    """Both production packs use compliant RULE_CODEs
+    (``UPDATE_DOCUMENT_PROCESS`` in sample.pack.xml,
+    ``COMPUTE_TEMPLATE_ORDER`` and ``COMPUTE_START_WORKFLOW`` in
+    sample.pack2.xml). SR002 must stay silent on real data.
+    """
+    for pack in ("sample.pack.xml", "sample.pack2.xml"):
+        brs = extract_bizrules(str(REPO_ROOT / pack))
+        for target in brs:
+            assert _findings(target, "SR002", pack_bizrules=brs) == []
