@@ -220,3 +220,64 @@ def test_visit_bizrule_hook_runs_before_ast_walk(isolated_checks) -> None:
         # was current at decoration time (the isolated list), so no
         # manual unregister is required.
         pass
+
+
+# placeholder marker
+
+
+# ── If stack ───────────────────────────────────────────────────────
+
+
+def test_if_stack_tracks_nested_branches(isolated_checks) -> None:
+    """A check observes ``ctx.in_if()`` at every ``AssignStmt``.
+
+    Verifies the runner pushes one ``IfFrame`` per branch entered, with
+    the correct ``branch`` label, and pops cleanly so post-if assignments
+    see no enclosing frame.
+    """
+    observed: list[tuple[str, str | None, int | None]] = []
+
+    @register_check(
+        rule_id="SR-IF-OBS",
+        category="logic",
+        severity="info",
+        description="record if-stack state at every AssignStmt",
+    )
+    class IfObs(Check):
+        def visit_AssignStmt(self, node) -> None:
+            from reviewer.ast.nodes import Identifier
+            name = node.target.name if isinstance(node.target, Identifier) else "?"
+            frame = self.ctx.in_if()
+            observed.append((
+                name,
+                frame.branch if frame else None,
+                len(self.ctx.if_stack),
+            ))
+
+    src = (
+        "if (a) {\n"
+        "    x := 1;\n"
+        "    if (b) {\n"
+        "        y := 2;\n"
+        "    } else {\n"
+        "        z := 3;\n"
+        "    }\n"
+        "} else {\n"
+        "    w := 4;\n"
+        "}\n"
+        "after := 5;\n"
+    )
+    br = FakeBizRule(name="IF_R1", script=src)
+    run_review(br)
+    by_name = {n: (br_, depth) for (n, br_, depth) in observed}
+
+    # Then-branch of the outer if.
+    assert by_name["x"] == ("then", 1)
+    # Then-branch of the inner if, nested inside outer's then.
+    assert by_name["y"] == ("then", 2)
+    # Else-branch of the inner if, still inside outer's then.
+    assert by_name["z"] == ("else", 2)
+    # Else-branch of the outer if.
+    assert by_name["w"] == ("else", 1)
+    # After the outer if has fully closed, no enclosing frame.
+    assert by_name["after"] == (None, 0)

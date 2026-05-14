@@ -1,0 +1,3 @@
+if (obj.F[C] > 5) {
+    obj.F[C] := obj.F[C] + 1;
+}

@@ -6,10 +6,12 @@ runner maintains those stacks on the shared ``CheckContext``.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, ClassVar
 
 from ..ast.nodes import (
     DoWhile,
+    Expr,
     ForCStyle,
     ForCounter,
     ForeachList,
@@ -20,6 +22,21 @@ from ..ast.nodes import (
 )
 from ..ast.tokens import CommentToken
 from .finding import Finding
+
+
+@dataclass(frozen=True)
+class IfFrame:
+    """Snapshot of an enclosing ``IfStmt`` branch.
+
+    Pushed by the runner when descending into an ``IfStmt``'s
+    ``then_branch`` or ``else_branch`` and popped on exit. Checks that
+    care about guarded code (e.g. SR058's existence-check detection)
+    read the stack via ``CheckContext.if_stack`` / ``in_if()``.
+    """
+
+    cond: Expr
+    branch: str  # "then" or "else"
+    line: int
 
 if TYPE_CHECKING:  # pragma: no cover
     from parser import BizRule  # noqa: F401  (only for hint)
@@ -55,6 +72,7 @@ class CheckContext:
         self.pack_bizrules: list = pack_bizrules if pack_bizrules is not None else []
         self._loop_stack: list[Node] = []
         self._try_stack: list[TryStmt] = []
+        self.if_stack: list[IfFrame] = []
         self.findings: list[Finding] = []
         # Set by the runner before dispatching each check.
         self._current_check: "Check | None" = None
@@ -91,6 +109,19 @@ class CheckContext:
 
     def in_try(self) -> bool:
         return bool(self._try_stack)
+
+    # ── If stack ─────────────────────────────────────────────────
+
+    def enter_if(self, frame: IfFrame) -> None:
+        self.if_stack.append(frame)
+
+    def exit_if(self) -> None:
+        if self.if_stack:
+            self.if_stack.pop()
+
+    def in_if(self) -> IfFrame | None:
+        """Innermost enclosing ``IfFrame``, or ``None`` if not inside an if."""
+        return self.if_stack[-1] if self.if_stack else None
 
     # ── Emission ─────────────────────────────────────────────────
 

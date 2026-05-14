@@ -1,0 +1,2 @@
+x := obj.sub.F;
+y := obj.sub.F;

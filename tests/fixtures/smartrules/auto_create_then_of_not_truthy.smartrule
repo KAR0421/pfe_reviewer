@@ -1,0 +1,3 @@
+if (not(obj.F[C])) {
+    obj.F[C] := newValue;
+}

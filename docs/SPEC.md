@@ -133,7 +133,7 @@ stable; pick the next free ID when adding a new check.
 | SR031 | warning  | Nested loops (two or more levels). [^sr031] | done |
 | SR032 | warning  | Duplicate / near-duplicate queries in the same rule. [^sr032] | done |
 | SR033 | warning  | Unbounded or trivially infinite loop. [^sr033] | done |
-| SR034 | info     | Repeated reads of the same field on the same object without intervening reassignment (e.g. `x := obj.F; y := obj.F;` — caching `obj.F` once would be cleaner). | pending |
+| SR034 | info     | Repeated reads of the same field on the same object without intervening reassignment (e.g. `x := obj.F; y := obj.F;` — caching `obj.F` once would be cleaner). [^sr034] | done |
 
 #### Security & robustness
 | ID    | Severity | Description | Status |
@@ -155,7 +155,7 @@ stable; pick the next free ID when adding a new check.
 |-------|----------|-------------|--------|
 | SR055 | warning  | Array alias: `b := a` between array-typed variables with no subsequent `arraycopy` — mutations to `b` will affect `a`. | pending |
 | SR057 | info     | Variables in the same rule differing only in case (e.g. `contrib` and `Contrib`) — likely typo since names are case-sensitive. [^sr057] | done |
-| SR058 | info     | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an existence check first. The kernel silently creates a record when none matches. | pending |
+| SR058 | warning  | Unintended record auto-create: assignment to `obj.FIELD[COND] := v` without an enclosing existence check on the same selector. The kernel silently creates a row when none matches. [^sr058] | done |
 | SR059 | info     | Unused variable: assigned (`x := 1`) but never read. [^sr059] | done |
 
 #### Scope (technical)
@@ -215,13 +215,11 @@ stable; pick the next free ID when adding a new check.
 ### M2 build order
 The remaining Must-Have checks ship in this order:
 
-1. SR034 — repeated field reads
-2. SR044 — dynamic SQL
-3. SR055 — array alias
-4. SR058 — unintended record auto-create
-5. SR042 — guarded field access (flow analysis)
-6. SR041 — div by zero (flow analysis)
-7. SR002 — RULE_CODE convention regex (config-driven)
+1. SR044 — dynamic SQL
+2. SR055 — array alias
+3. SR042 — guarded field access (flow analysis)
+4. SR041 — div by zero (flow analysis)
+5. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -241,13 +239,13 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, eighteen
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, twenty
   checks (SR010, SR011, SR012.1, SR020, SR021, SR030, SR031, SR032,
-  SR033, SR057, SR059, SR060, SR061-intra, SR062, SR090, SR091,
-  SR093, SR094), full test suite green.
+  SR033, SR034, SR057, SR058, SR059, SR060, SR061, SR062, SR090,
+  SR091, SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
-  in the order documented in §6 "M2 build order" (SR034, SR044,
-  SR055, SR058, SR042, SR041, SR002).
+  in the order documented in §6 "M2 build order" (SR044, SR055,
+  SR042, SR041, SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -284,6 +282,10 @@ comment + inline for `severity >= warning`).
 [^sr033]: `UnboundedLoopCheck` visits `WhileStmt`, `DoWhile`, and `ForCStyle` only — `foreach` and counter-`for` are bounded by language design. Two firing paths: (1) **trivial-infinite** when the condition is a non-zero `NumberLit` or non-empty `StringLit` (or a C-style `for` with no condition); (2) **unbounded condition** when the set of identifier / field-access string-forms in the condition is disjoint from the set of `AssignStmt` targets in the body (and in the C-for step). Function and method calls in the body do *not* count as mutations — only `:=` and `?=` mutate. Function and method *names* in callee position are not collected as condition variables either. A condition with no extractable identifiers (e.g. `while (getStatus())`) is silent: no signal to reason about.
 
 [^sr059]: `UnusedVariableCheck` walks each script once collecting (a) the first-line of every `AssignStmt` whose target is a bare `Identifier`, and (b) the set of `Identifier` names appearing in read positions. Counter-`for` and `foreach` loop variables are excluded from both sets — loop-introduced names are idiomatic to ignore. Function/method *names* in callee position are not reads; method *receivers* are. `?=` is treated as an assignment with no read semantics (purely an assign for SR059 purposes). Multiple assignments to the same name collapse onto the first one's line in the finding. Severity is `info`.
+
+[^sr034]: `RepeatedFieldReadCheck` uses a structural-identity key `(target_dotted_name, field)` for every `FieldAccess` whose `target` is a bare `Identifier` or a chain of `FieldAccess` rooted at one (helper `dotted_name` in `_field_access.py`). Forms like `getThing().F` are skipped — no stable source variable to use as a cache key. **Method-call callees are excluded**: a `FieldAccess` appearing in `Call.callee` position is not counted as a read, because `obj.method()` may have side effects or return different values per invocation, so two such calls aren't redundant the way two reads of `obj.F` are (same exclusion as SR057/SR059); the receiver chain (e.g. `obj.sub` inside `obj.sub.method()`) is still walked for nested reads. Detection is event-based, walking the script in source order: `read(key)` events (every qualifying `FieldAccess`), `var_assign(name)` events (any `AssignStmt` whose target is a bare `Identifier`, invalidates every cached group whose root equals `name`), and `field_assign(key)` events (any `AssignStmt` whose target is a `FieldAccess`, invalidates that specific key). Within a single statement, value-side reads are emitted before the target-side write so `obj.F := obj.F + 1` does not self-invalidate. Reads of the same key accumulate into a *group*; a group is closed by an invalidating event or at end-of-script and, if it contains N≥2 reads, produces **exactly one** finding anchored at the first read's line, with a message listing all N read lines and the total count (e.g. `"Field 'obj.F' read 3 times (lines 1, 2, 3) — consider caching in a local variable to avoid repeated lookups."`). Severity is `info` — these are caching hints, not defects.
+
+[^sr058]: `AutoCreateAssignCheck` fires on `AssignStmt` whose target is a `TableSelector` and whose enclosing if-stack does not contain a *relevant* existence check. Relevance is decided by walking the engine's `if_stack` from innermost outward; the first `IfFrame` whose condition references the same `TableSelector` (structural equality on target/field/condition, helper `tableselector_structural_eq` in `_guards.py`) decides the verdict. Comparison shapes are classified by `classify_comparison` into three buckets: **EMPTINESS_CHECK** (`TS = null`, `TS = ""`, `not(TS)` — true exactly when the row is missing; firing in the then-branch, silent in else), **PRESENCE_CHECK** (`TS != null`, `TS != ""`, bare `TS` — true exactly when the row is present; silent in then, firing in else), or **VALUE_ENGAGEMENT** (any other comparison referencing the value: `TS = "VALIDATED"`, `TS > 5`, `TS != someVar`, … — the developer reads the value's content, implicitly asserting presence; safe in either branch). Boolean combinators (`and`/`or`) recurse and return the strongest classification (VALUE_ENGAGEMENT > PRESENCE > EMPTINESS), where "strongest" = "most likely to keep the assignment silent" — adding extra clauses to a guard shouldn't *create* a finding that a simpler guard wouldn't have produced. The language has no `!` token; logical negation is the built-in `not(...)` call. Both quote styles for empty strings (`""` and `''`) count.
 
 ## 9. Open questions
 - Is there an authoritative list of valid object / class names the reviewer

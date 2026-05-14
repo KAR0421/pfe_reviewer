@@ -12,12 +12,12 @@ The runner:
 """
 from __future__ import annotations
 
-from ..ast.nodes import Node, TryStmt
+from ..ast.nodes import IfStmt, Node, TryStmt
 from ..ast.parser import ParseError, Parser
 from ..ast.tokenizer import TokenizeError, tokenize
 from .finding import Finding, Report
 from .registry import CHECKS
-from .visitor import LOOP_TYPES, Check, CheckContext
+from .visitor import LOOP_TYPES, Check, CheckContext, IfFrame
 
 # Eagerly import the check modules so their decorators register them.
 from .. import checks  # noqa: F401  (registers checks on import)
@@ -90,11 +90,12 @@ def run_review(br, pack_bizrules: list | None = None) -> Report:
 def _walk(node: Node, ctx: CheckContext, checks: list[Check]) -> None:
     """Visit ``node`` with every check, then recurse into its children.
 
-    Maintains loop/try stacks on entry and exit. Each check's exception
-    is caught and reported as ``SR998 check-crash``.
+    Maintains loop/try/if stacks on entry and exit. Each check's
+    exception is caught and reported as ``SR998 check-crash``.
     """
     is_loop = isinstance(node, LOOP_TYPES)
     is_try = isinstance(node, TryStmt)
+    is_if = isinstance(node, IfStmt)
     if is_loop:
         ctx.enter_loop(node)
     if is_try:
@@ -120,8 +121,26 @@ def _walk(node: Node, ctx: CheckContext, checks: list[Check]) -> None:
             )
     ctx._current_check = None
 
-    for child in node.children():
-        _walk(child, ctx, checks)
+    if is_if:
+        # Walk an ``IfStmt`` manually so we can push an ``IfFrame``
+        # only around the branch bodies — the condition itself is
+        # walked outside any frame, since "inside the if" semantically
+        # means "inside one of the branches", not "inside the test".
+        _walk(node.cond, ctx, checks)
+        ctx.enter_if(IfFrame(cond=node.cond, branch="then", line=node.line))
+        try:
+            _walk(node.then_branch, ctx, checks)
+        finally:
+            ctx.exit_if()
+        if node.else_branch is not None:
+            ctx.enter_if(IfFrame(cond=node.cond, branch="else", line=node.line))
+            try:
+                _walk(node.else_branch, ctx, checks)
+            finally:
+                ctx.exit_if()
+    else:
+        for child in node.children():
+            _walk(child, ctx, checks)
 
     if is_try:
         ctx.exit_try(node)

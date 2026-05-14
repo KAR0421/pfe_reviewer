@@ -550,3 +550,174 @@ def _collect_assigned_names(node: Node, out: set[str]) -> None:
     for child in node.children():
         _collect_assigned_names(child, out)
 
+
+# SR034_MARKER
+
+# ── SR034 RepeatedFieldReadCheck ───────────────────────────────────
+
+
+from ._field_access import dotted_name as _ff_dotted_name  # noqa: E402
+from ._field_access import field_key as _ff_field_key  # noqa: E402
+from ._field_access import root_var as _ff_root_var  # noqa: E402
+
+
+@register_check(
+    rule_id="SR034",
+    category="performance",
+    severity="info",
+    description=(
+        "Repeated reads of the same field on the same object without "
+        "intervening reassignment"
+    ),
+)
+class RepeatedFieldReadCheck(Check):
+    """Flag a second (or later) read of the same ``obj.field`` (or
+    ``obj.sub.field``) when no reassignment to either the field or the
+    leftmost root variable has happened between the two reads.
+
+    Implements SPEC §6 SR034. Repeated field reads aren't *wrong* —
+    they're just a missed opportunity: caching the value once in a
+    local variable is both faster (skip whatever indirection
+    ``obj.field`` triggers) and more readable (the local name documents
+    the intent).
+
+    Detection works by walking the script in source order, emitting
+    three event kinds:
+
+    - ``read(key)`` for every ``FieldAccess`` whose ``target`` is a
+      bare-rooted dotted name (``getThing().F`` is skipped — no stable
+      source to cache against). ``FieldAccess`` nodes used as the
+      callee of a ``Call`` are NOT counted as reads: ``obj.method()``
+      may have side effects or return different values per invocation,
+      so two such calls aren't redundant the way two reads of
+      ``obj.F`` are. Same exclusion as SR057/SR059.
+    - ``var_assign(name)`` for every ``AssignStmt`` whose target is a
+      bare ``Identifier`` — invalidates every cached group whose root
+      equals ``name``;
+    - ``field_assign(key)`` for every ``AssignStmt`` whose target is a
+      ``FieldAccess`` — invalidates only that specific key.
+
+    Reads of the same ``(target, field)`` key are accumulated into a
+    *group*. A group is closed when an invalidating event fires for it
+    or at end-of-script. A closed group with N≥2 reads produces
+    exactly ONE finding, anchored at the FIRST read's line, listing
+    every read line and the total count.
+
+    Within a single statement, value-side reads are emitted **before**
+    the target-side write so that ``obj.F := obj.F + 1`` does not
+    self-invalidate (the read of ``obj.F`` on the RHS is processed
+    before the write on the LHS).
+    """
+
+    def visit_Script(self, node: Script) -> None:
+        events: list[tuple[str, object, int]] = []
+        self._collect(node, events)
+
+        groups: dict[tuple[str, str], list[int]] = {}
+
+        def flush(key: tuple[str, str]) -> None:
+            lines = groups.pop(key, [])
+            if len(lines) < 2:
+                return
+            target_dotted, field = key
+            line_list = ", ".join(str(l) for l in lines)
+            self.ctx.emit(
+                line=lines[0],
+                message=(
+                    f"Field '{target_dotted}.{field}' read "
+                    f"{len(lines)} times (lines {line_list}) — "
+                    "consider caching in a local variable to avoid "
+                    "repeated lookups."
+                ),
+            )
+
+        for kind, payload, _line in events:
+            if kind == "var_assign":
+                name = payload  # type: ignore[assignment]
+                for k in list(groups):
+                    if _ff_root_var(k[0]) == name:
+                        flush(k)
+            elif kind == "field_assign":
+                key = payload  # type: ignore[assignment]
+                flush(key)  # type: ignore[arg-type]
+            elif kind == "read":
+                key, rline = payload  # type: ignore[misc]
+                groups.setdefault(key, []).append(rline)
+
+        # End-of-script flush of any still-open groups.
+        for key in list(groups):
+            flush(key)
+
+    # ── Event collection ────────────────────────────────────────
+
+    def _collect(
+        self,
+        node: Node,
+        events: list[tuple[str, object, int]],
+    ) -> None:
+        """Walk ``node`` in source order, appending events to ``events``."""
+        if isinstance(node, AssignStmt):
+            # Process value (reads) first, then target (writes).
+            self._collect_read(node.value, events)
+            self._collect_write_target(node.target, node.line, events)
+            return
+        # All other node kinds: just collect reads.
+        self._collect_read(node, events)
+
+    def _collect_read(
+        self,
+        node: Node,
+        events: list[tuple[str, object, int]],
+    ) -> None:
+        if isinstance(node, Call):
+            # Callee in call position: don't count as a read. Methods
+            # may have side effects / per-invocation results, so two
+            # ``obj.method()`` calls aren't redundant. Still walk into
+            # the callee's receiver chain so nested reads (e.g.
+            # ``obj.sub`` inside ``obj.sub.method()``) are tracked.
+            if isinstance(node.callee, FieldAccess):
+                self._collect_read(node.callee.target, events)
+            else:
+                self._collect_read(node.callee, events)
+            for arg in node.args:
+                self._collect_read(arg, events)
+            return
+        if isinstance(node, FieldAccess):
+            key = _ff_field_key(node)
+            if key is not None:
+                events.append(("read", (key, node.line), node.line))
+            # Walk into target so nested reads (``obj.sub`` inside
+            # ``obj.sub.F``) are also tracked.
+            self._collect_read(node.target, events)
+            return
+        if isinstance(node, AssignStmt):
+            # Re-enter the assign-aware path so nested AssignStmts
+            # inside expressions (rare, but possible via ``?=``-bearing
+            # forms in the future) are still classified correctly.
+            self._collect(node, events)
+            return
+        for child in node.children():
+            self._collect_read(child, events)
+
+    def _collect_write_target(
+        self,
+        target: Expr,
+        stmt_line: int,
+        events: list[tuple[str, object, int]],
+    ) -> None:
+        if isinstance(target, Identifier):
+            events.append(("var_assign", target.name, stmt_line))
+            return
+        if isinstance(target, FieldAccess):
+            key = _ff_field_key(target)
+            if key is not None:
+                events.append(("field_assign", key, stmt_line))
+            # The target's own ``target`` (intermediate object in
+            # ``obj.sub.F := v``) is read context, not a write.
+            self._collect_read(target.target, events)
+            return
+        # TableSelector / ArrayIndex / etc. — not tracked as a write
+        # for SR034 purposes (SR058 owns auto-create on TableSelector).
+        # Still walk into them so reads inside conditions/indices are
+        # captured.
+        self._collect_read(target, events)

@@ -284,3 +284,147 @@ def test_sr057_real_pack_compute_template_order_silent() -> None:
     assert _sr057(br) == []
 
 
+
+# SR058_TESTS_MARKER
+
+
+# ════════════════════════════════════════════════════════════════════
+# SR058 — AutoCreateAssignCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+def _sr058(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR058"]
+
+
+# ── SR058 Positive (fire) ──────────────────────────────────────────
+
+
+def test_sr058_no_guard_fires() -> None:
+    br = _load("auto_create_no_guard.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 1
+    assert f.severity == "warning"
+    assert f.category == "lang"
+    assert "obj.F[C]" in f.message
+    assert "auto-create" in f.message.lower() or "creates a new record" in f.message
+
+
+def test_sr058_then_of_emptiness_null_fires() -> None:
+    br = _load("auto_create_then_of_emptiness_null.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+
+
+def test_sr058_then_of_emptiness_emptystr_fires() -> None:
+    br = _load("auto_create_then_of_emptiness_emptystr.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+
+
+def test_sr058_then_of_not_truthy_fires() -> None:
+    br = _load("auto_create_then_of_not_truthy.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+
+
+def test_sr058_else_of_presence_fires() -> None:
+    br = _load("auto_create_else_of_presence.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    assert findings[0].line == 4
+
+
+def test_sr058_wrong_guard_target_fires() -> None:
+    """A guard on a different TableSelector doesn't cover the
+    assignment — different selector = irrelevant frame.
+    """
+    br = _load("auto_create_wrong_guard.smartrule")
+    findings = _sr058(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2
+
+
+# ── SR058 Negative (silent) ────────────────────────────────────────
+
+
+def test_sr058_then_of_presence_null_silent() -> None:
+    br = _load("auto_create_then_of_presence_null.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_then_of_presence_emptystr_silent() -> None:
+    br = _load("auto_create_then_of_presence_emptystr.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_then_of_truthy_silent() -> None:
+    br = _load("auto_create_then_of_truthy.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_else_of_emptiness_silent() -> None:
+    br = _load("auto_create_else_of_emptiness.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_value_engagement_eq_string_silent() -> None:
+    """Equality to a non-empty literal: developer reads the value,
+    implicitly asserting the row exists.
+    """
+    br = _load("auto_create_value_engagement_eq_string.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_value_engagement_arithmetic_silent() -> None:
+    br = _load("auto_create_value_engagement_gt.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_value_engagement_eq_var_silent() -> None:
+    br = _load("auto_create_value_engagement_eq_var.smartrule")
+    assert _sr058(br) == []
+
+
+def test_sr058_nested_outer_guard_covers_inner_assign_silent() -> None:
+    """Innermost frame doesn't reference the selector, but the outer
+    one does (PRESENCE_CHECK then-branch). The walk continues outward
+    until it finds a relevant frame.
+    """
+    br = _load("auto_create_nested_outer_guards.smartrule")
+    assert _sr058(br) == []
+
+
+# ── SR058 Edge ─────────────────────────────────────────────────────
+
+
+def test_sr058_in_string_or_comment_silent() -> None:
+    br = _load("auto_create_in_string_or_comment.smartrule")
+    assert _sr058(br) == []
+
+
+# ── SR058 Real-pack regression ─────────────────────────────────────
+
+
+def test_sr058_real_pack_update_document_process_documented() -> None:
+    """Document any TableSelector assignments the real script makes —
+    these are genuine findings if any fire, not test failures.
+    """
+    br = _load("update_document_process.smartrule")
+    findings = _sr058(br)
+    for f in findings:
+        assert f.severity == "warning"
+        assert f.category == "lang"
+
+
+def test_sr058_real_pack_compute_template_order_documented() -> None:
+    br = _load("compute_template_order.smartrule")
+    findings = _sr058(br)
+    for f in findings:
+        assert f.severity == "warning"
+        assert f.category == "lang"

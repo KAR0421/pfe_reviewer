@@ -1,0 +1,3 @@
+x := obj.F;
+obj := getOther();
+y := obj.F;

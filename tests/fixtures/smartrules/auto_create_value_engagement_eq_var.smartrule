@@ -1,0 +1,3 @@
+if (obj.F[C] = otherVar) {
+    obj.F[C] := "ok";
+}

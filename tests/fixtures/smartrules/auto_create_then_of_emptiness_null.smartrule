@@ -1,0 +1,3 @@
+if (obj.F[C] = null) {
+    obj.F[C] := newValue;
+}

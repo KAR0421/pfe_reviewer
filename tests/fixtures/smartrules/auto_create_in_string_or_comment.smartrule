@@ -1,0 +1,2 @@
+// obj.F[C] := newValue;
+msg := "obj.F[C] := newValue;";

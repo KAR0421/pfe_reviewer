@@ -417,3 +417,127 @@ def test_sr033_call_only_condition_silent() -> None:
     must NOT fire. Avoids a false positive on call-driven loops."""
     br = _load("unbounded_while_call_condition.smartrule")
     assert _ast_sr033_findings(br) == []
+
+# SR034_TESTS_MARKER
+
+
+# ════════════════════════════════════════════════════════════════════
+# SR034 — RepeatedFieldReadCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+def _sr034(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR034"]
+
+
+# ── SR034 Positive ─────────────────────────────────────────────────
+
+
+def test_sr034_two_reads_fires_once_anchored_at_first() -> None:
+    br = _load("repeated_field_two_reads.smartrule")
+    findings = _sr034(br)
+    assert len(findings) == 1
+    f = findings[0]
+    # Anchored at the FIRST read's line, not the second.
+    assert f.line == 1
+    assert f.severity == "info"
+    assert f.category == "performance"
+    assert "obj.F" in f.message
+    assert "2 times" in f.message
+    assert "lines 1, 2" in f.message
+
+
+def test_sr034_three_reads_fires_once_with_all_lines() -> None:
+    br = _load("repeated_field_three_reads.smartrule")
+    findings = _sr034(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.line == 1
+    assert "3 times" in f.message
+    assert "lines 1, 2, 3" in f.message
+
+
+def test_sr034_chain_depth_tracked() -> None:
+    """``obj.sub.F`` reads share key ``("obj.sub", "F")`` — also fires.
+
+    The intermediate ``obj.sub`` is also tracked as its own key, so
+    two findings appear (one per key), each anchored at line 1.
+    """
+    br = _load("repeated_field_chain_depth.smartrule")
+    findings = _sr034(br)
+    assert all(f.line == 1 for f in findings)
+    assert sum("obj.sub.F" in f.message for f in findings) == 1
+
+
+# ── SR034 Negative ─────────────────────────────────────────────────
+
+
+def test_sr034_var_reassignment_invalidates() -> None:
+    br = _load("repeated_field_var_reassigned.smartrule")
+    assert _sr034(br) == []
+
+
+def test_sr034_field_reassignment_invalidates() -> None:
+    br = _load("repeated_field_field_reassigned.smartrule")
+    assert _sr034(br) == []
+
+
+def test_sr034_single_read_silent() -> None:
+    br = _load("repeated_field_single_read.smartrule")
+    assert _sr034(br) == []
+
+
+def test_sr034_different_fields_silent() -> None:
+    br = _load("repeated_field_different_fields.smartrule")
+    assert _sr034(br) == []
+
+
+def test_sr034_different_targets_silent() -> None:
+    br = _load("repeated_field_different_targets.smartrule")
+    assert _sr034(br) == []
+
+
+def test_sr034_call_target_silent() -> None:
+    """``getThing().F`` has no stable source variable, so it's
+    excluded by design — the dotted-name resolver returns ``None``.
+    """
+    br = _load("repeated_field_call_target.smartrule")
+    assert _sr034(br) == []
+
+
+# ── SR034 Edge ─────────────────────────────────────────────────────
+
+
+def test_sr034_in_string_or_comment_silent() -> None:
+    """The tokenizer strips comments and treats string literals as
+    opaque tokens, so the AST never produces ``FieldAccess`` nodes
+    for those lookalikes — nothing for SR034 to fire on.
+    """
+    br = _load("repeated_field_in_string_or_comment.smartrule")
+    assert _sr034(br) == []
+
+
+# ── SR034 Real-pack regression ─────────────────────────────────────
+
+
+def test_sr034_real_pack_update_document_process_documented() -> None:
+    """Real script from sample.pack.xml. Document the count so any
+    future regression that changes detection sensitivity surfaces in
+    a diff. The exact count is whatever the analyzer naturally finds;
+    these are *findings*, not test failures.
+    """
+    br = _load("update_document_process.smartrule")
+    findings = _sr034(br)
+    # Smoke-test: every finding has the expected shape.
+    for f in findings:
+        assert f.severity == "info"
+        assert f.category == "performance"
+        assert "read" in f.message and "times" in f.message
+
+
+def test_sr034_real_pack_compute_template_order_documented() -> None:
+    br = _load("compute_template_order.smartrule")
+    findings = _sr034(br)
+    for f in findings:
+        assert f.severity == "info"
+        assert f.category == "performance"

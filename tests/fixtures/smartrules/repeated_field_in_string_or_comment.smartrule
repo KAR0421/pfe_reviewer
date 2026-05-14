@@ -1,0 +1,3 @@
+// x := obj.F;
+// y := obj.F;
+msg := "x := obj.F; y := obj.F;";
