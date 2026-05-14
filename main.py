@@ -17,7 +17,7 @@ def _review_pack(xml_path: Path) -> None:
         print(f"Scope: {br.scope}")
         print("Script Preview:", br.script[:200], "...\n")
 
-        print_report(run_review(br))
+        print_report(run_review(br, pack_bizrules=bizrules))
 
         print("\n==============================\n")
 

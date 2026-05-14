@@ -38,6 +38,7 @@ class CheckContext:
         self,
         bizrule,
         comments: list[CommentToken] | None = None,
+        pack_bizrules: list | None = None,
     ) -> None:
         self.bizrule = bizrule
         # Side-channel comment list captured by the tokenizer. Checks
@@ -46,6 +47,12 @@ class CheckContext:
         # default empty list keeps existing call sites that don't pass
         # comments working unchanged.
         self.comments: list[CommentToken] = comments or []
+        # All BizRules in the surrounding pack (when available).
+        # Cross-rule checks (SR061 trigger-object intra-pack resolution)
+        # read this list; callers that review a single rule in
+        # isolation pass nothing and the field stays empty, in which
+        # case those checks must skip gracefully.
+        self.pack_bizrules: list = pack_bizrules if pack_bizrules is not None else []
         self._loop_stack: list[Node] = []
         self._try_stack: list[TryStmt] = []
         self.findings: list[Finding] = []

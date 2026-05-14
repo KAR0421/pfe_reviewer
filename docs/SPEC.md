@@ -116,7 +116,7 @@ stable; pick the next free ID when adding a new check.
 | ID      | Severity | Description | Status |
 |---------|----------|-------------|--------|
 | SR010   | error    | Missing or empty `USER_COMMENT`. | done |
-| SR011   | warning  | Missing SMARTRULE_NAME: the rule has no display name in any language. Lenient — at least one language is enough. | pending |
+| SR011   | warning  | Missing SMARTRULE_NAME: the rule has no display name in any language. Lenient — at least one language is enough. | done |
 | SR012.1 | warning  | Insufficient inline comment density: fewer than 1 `//` comment per 12 branches/loops/risky calls. Complexity definition same as SR091 (branches + loops + risky_calls). [^sr012_1] | done |
 | SR012.2 | info     | Comments describe *how* instead of *why*. | agentic |
 
@@ -161,9 +161,9 @@ stable; pick the next free ID when adding a new check.
 #### Scope (technical)
 | ID    | Severity | Description | Status |
 |-------|----------|-------------|--------|
-| SR060 | warning  | `SMARTRULE_TRIGGER` empty or malformed. | pending |
-| SR061 | warning  | `TRIGGER_OBJECT` not present in the pack (intra-pack lookup; DB-connected variant is M4). | pending |
-| SR062 | info     | `TRIGGER_TYPE` code does not match a known enum value. [^sr062] | pending |
+| SR060 | warning  | `SMARTRULE_TRIGGER` missing entirely, or a trigger of an *object-required* type (20, 21, 30, 31, 40, 41 — record/field events) has an empty `TRIGGER_OBJECT`. Object-not-required types (10–14, 50, 51) are silent; type 60 is SR061's territory. [^sr060] | done |
+| SR061 | warning  | `TRIGGER_TYPE=60` (internal process) on a rule requires at least one of its type-60 triggers to have `TRIGGER_OBJECT` equal to the rule's own `RULE_CODE`. Other type-60 triggers in the same rule may reference any `RULE_CODE` (in or out of the pack) — chaining to external rules is a valid pattern. [^sr061] | done |
+| SR062 | info     | `TRIGGER_TYPE` code does not match a known enum value. [^sr062] | done |
 
 #### Logs
 | ID    | Severity | Description | Status |
@@ -219,13 +219,9 @@ The remaining Must-Have checks ship in this order:
 2. SR044 — dynamic SQL
 3. SR055 — array alias
 4. SR058 — unintended record auto-create
-5. SR011 — missing SMARTRULE_NAME
-6. SR060 — empty/malformed SMARTRULE_TRIGGER
-7. SR061 — TRIGGER_OBJECT not in pack (intra-pack only; DB variant is M4)
-8. SR062 — TRIGGER_TYPE not in valid enum set
-9. SR042 — guarded field access (flow analysis)
-10. SR041 — div by zero (flow analysis)
-11. SR002 — RULE_CODE convention regex (config-driven)
+5. SR042 — guarded field access (flow analysis)
+6. SR041 — div by zero (flow analysis)
+7. SR002 — RULE_CODE convention regex (config-driven)
 
 ## 7. Output
 
@@ -245,13 +241,13 @@ comment + inline for `severity >= warning`).
 
 ## 8. Milestones
 
-- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, fourteen
-  checks (SR010, SR012.1, SR020, SR021, SR030, SR031, SR032, SR033,
-  SR057, SR059, SR090, SR091, SR093, SR094), full test suite green.
+- **M1 — done.** AST pipeline shipped: tokenizer, parser, engine, eighteen
+  checks (SR010, SR011, SR012.1, SR020, SR021, SR030, SR031, SR032,
+  SR033, SR057, SR059, SR060, SR061-intra, SR062, SR090, SR091,
+  SR093, SR094), full test suite green.
 - **M2 — current.** Finish the remaining structural Must-Have checks
   in the order documented in §6 "M2 build order" (SR034, SR044,
-  SR055, SR058, SR011, SR060, SR061-intra, SR062, SR042, SR041,
-  SR002).
+  SR055, SR058, SR042, SR041, SR002).
 - **M3 — Bitbucket integration.** Post findings as PR comments via the
   Bitbucket REST API; CI hook.
 - **M4 — DB-connected and harder checks.** SR043 (after redefining
@@ -278,6 +274,10 @@ comment + inline for `severity >= warning`).
 [^sr044]: Reuses `_sql.py`'s query-flattening helper to share a "literal vs dynamic" classification with SR030 and SR032. A query is considered literal if it's a `StringLit` or a concatenation of `StringLit`s and identifier substitutions only. Anything else (unflattenable expression, computed at runtime) is dynamic and fires.
 
 [^sr062]: Valid TRIGGER_TYPE integer values per `schema.xml`'s `RULE_TRIGGER_TYPE` simple type are: 10, 11, 12, 13, 14, 20, 21, 30, 31, 40, 50, 51, 60. Anything outside this set fires.
+
+[^sr060]: Trigger types split into two groups by whether `TRIGGER_OBJECT` is required to name a target field/record. **Object-required (this check):** 20 = record created, 21 = record to be deleted, 30 = field to be indirectly changed, 31 = field indirectly changed, 40 = field to be changed, 41 = field changed. An empty `TRIGGER_OBJECT` on these types is a misconfiguration — the trigger has no target. **Object-not-required (silent):** 10–14, 50, 51 — these fire globally; an empty `TRIGGER_OBJECT` is valid. **Type 60** (internal process) also requires `TRIGGER_OBJECT` but with different semantics (must reference a `RULE_CODE`, not a field) and is owned by SR061 to avoid double-flagging. The pre-correction check fired on *any* empty `TRIGGER_OBJECT` regardless of type and produced false positives on real production data (`UPDATE_DOCUMENT_PROCESS` uses type 13, which doesn't require an object).
+
+[^sr061]: Type 60 (internal process) is the dispatch mechanism by which one BizRule explicitly invokes another by `RULE_CODE`. The structural invariant SR061 enforces is the **self-reference invariant**: if a rule has any type-60 trigger, at least one of those triggers' `TRIGGER_OBJECT` must equal the rule's own `RULE_CODE`. Otherwise the rule advertises an entry point that nothing connects to itself, and the platform cannot invoke it via internal-process dispatch. Fired at most once per rule, regardless of how many type-60 triggers exist (category `scope` — structural). Other type-60 triggers in the same rule may reference any `RULE_CODE`, in or out of the pack: chaining to an external rule is a legitimate pattern and is **not** flagged. Earlier drafts of this check also performed per-trigger intra-pack resolution and flagged empty type-60 `TRIGGER_OBJECT` values; both behaviors were removed because they over-flagged valid chaining configurations.
 
 [^sr043]: Deferred pending review of real-world BizRule contexts where missing try/onerror is genuinely problematic. The blanket form (every risky call must be wrapped) is too noisy for this codebase.
 

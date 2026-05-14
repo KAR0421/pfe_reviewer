@@ -23,8 +23,16 @@ from .visitor import LOOP_TYPES, Check, CheckContext
 from .. import checks  # noqa: F401  (registers checks on import)
 
 
-def run_review(br) -> Report:
-    """Tokenize, parse, and walk a BizRule, returning a Report."""
+def run_review(br, pack_bizrules: list | None = None) -> Report:
+    """Tokenize, parse, and walk a BizRule, returning a Report.
+
+    ``pack_bizrules`` is the optional list of every BizRule in the
+    surrounding pack — required only by cross-rule checks
+    (e.g. SR061's intra-pack TRIGGER_OBJECT resolution). When the
+    caller reviews a single rule in isolation, omit it; cross-rule
+    checks will skip themselves rather than fire on insufficient
+    information.
+    """
     try:
         tokens, comments = tokenize(br.script)
         tree = Parser(tokens).parse_script()
@@ -43,7 +51,11 @@ def run_review(br) -> Report:
             ),
         )
 
-    ctx = CheckContext(bizrule=br, comments=comments)
+    ctx = CheckContext(
+        bizrule=br,
+        comments=comments,
+        pack_bizrules=pack_bizrules,
+    )
     check_instances: list[Check] = [cls(ctx) for cls in CHECKS]
 
     # BizRule-level dispatch: runs once per review, before any AST
