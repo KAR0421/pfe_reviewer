@@ -1,0 +1,3 @@
+if (someOther = 0) {
+    x := total / y;
+}

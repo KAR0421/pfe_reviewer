@@ -233,3 +233,103 @@ class StaticConditionCheck(Check):
         template = _KIND_MESSAGES[kind]
         op = expr.op if isinstance(expr, BinaryOp) else ""
         self.ctx.emit(line=expr.line, message=template.format(op=op))
+
+
+# ── SR041 DivByZeroCheck ──────────────────────────────────────────
+
+
+from ._guards import (  # noqa: E402
+    KNOWN_NONZERO,
+    KNOWN_ZERO,
+    UNKNOWN,
+    classify_numeric_guard,
+    expr_repr,
+)
+
+
+@register_check(
+    rule_id="SR041",
+    category="logic",
+    severity="error",
+    description="Division where the right operand could be zero.",
+)
+class DivByZeroCheck(Check):
+    """Flag a ``BinaryOp(op="/")`` whose right operand is provably or
+    possibly zero at the division line.
+
+    Implements SPEC §6 SR041. Two severity tiers:
+
+    - **error** (``KNOWN_ZERO``): the right operand is provably zero
+      in this branch — either a literal ``0``, or guarded by an
+      enclosing ``if (Y = 0) { ... }`` / ``if (Y != 0) { } else { ... }``
+      / ``if (! Y) { ... }`` / etc.
+    - **warning** (``UNKNOWN``): no enclosing guard establishes either
+      side. The division might crash if ``Y`` is zero at runtime.
+    - silent (``KNOWN_NONZERO``): a literal non-zero, or an enclosing
+      guard proves ``Y`` is non-zero (``Y != 0``, ``Y > 0``, ``Y < 0``,
+      ``Y >= 1``, bare-truthy ``Y``, value-engagement comparison such
+      as ``Y = "ACTIVE"``).
+    - silent (Call right-hand side): conservative skip — the check
+      cannot reason about function return values.
+
+    Guard analysis walks ``self.ctx.if_stack`` from innermost outward
+    and uses the first frame that mentions the divisor. Compound
+    conditions (``and`` / ``or``) currently short-circuit to
+    ``UNKNOWN``; refine if real packs need it.
+    """
+
+    def visit_BinaryOp(self, node: BinaryOp) -> None:
+        if node.op != "/":
+            return
+        right = node.right
+
+        # Literal divisor: decide immediately.
+        if isinstance(right, NumberLit):
+            if right.value == 0:
+                self._fire_error(node)
+            return
+
+        # Conservative skip for function-call divisors.
+        if isinstance(right, Call):
+            return
+
+        # Identifier / FieldAccess / ArrayIndex / TableSelector — walk
+        # the if-stack innermost outward; first frame that mentions
+        # the divisor decides.
+        verdict = UNKNOWN
+        for frame in reversed(self.ctx.if_stack):
+            cls = classify_numeric_guard(frame.cond, right, frame.branch)
+            if cls is None:
+                continue
+            verdict = cls
+            break
+
+        if verdict == KNOWN_NONZERO:
+            return
+        if verdict == KNOWN_ZERO:
+            self._fire_error(node)
+            return
+        # UNKNOWN — possibly zero at runtime.
+        self._fire_warning(node)
+
+    def _fire_error(self, node: BinaryOp) -> None:
+        self.ctx.emit(
+            line=node.line,
+            message=(
+                f"Division by zero at line {node.line}: "
+                f"'{expr_repr(node.left)} / {expr_repr(node.right)}'. "
+                "The right operand is provably zero in this branch."
+            ),
+        )
+
+    def _fire_warning(self, node: BinaryOp) -> None:
+        self.ctx.emit(
+            line=node.line,
+            severity="warning",
+            message=(
+                f"Division at line {node.line}: "
+                f"'{expr_repr(node.left)} / {expr_repr(node.right)}'. "
+                "The right operand is not guarded against zero — if "
+                "it can be zero at runtime, the rule will crash."
+            ),
+        )

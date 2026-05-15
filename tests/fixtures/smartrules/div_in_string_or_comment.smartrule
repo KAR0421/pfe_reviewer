@@ -1,0 +1,3 @@
+// x := total / 0;
+msg := "x := y / 0";
+log(msg);

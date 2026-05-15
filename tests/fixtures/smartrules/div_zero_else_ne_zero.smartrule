@@ -1,0 +1,5 @@
+if (y != 0) {
+    log("ok");
+} else {
+    x := total / y;
+}

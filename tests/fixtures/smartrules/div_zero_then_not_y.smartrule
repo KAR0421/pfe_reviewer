@@ -1,0 +1,3 @@
+if (not(y)) {
+    x := total / y;
+}

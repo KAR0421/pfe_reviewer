@@ -1,0 +1,3 @@
+foreach c in cs do {
+    rate := c.TOTAL / c.COUNT;
+}

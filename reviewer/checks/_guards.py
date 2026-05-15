@@ -253,3 +253,186 @@ def expr_repr(e: Expr) -> str:
     if isinstance(e, Call):
         return f"{expr_repr(e.callee)}(...)"
     return "?"
+
+
+# ── Numeric guard classification (SR041) ───────────────────────────
+
+
+# Classifications for ``classify_numeric_guard``. ``KNOWN_ZERO`` and
+# ``KNOWN_NONZERO`` are conclusive on a single guard frame;
+# ``UNKNOWN`` means the frame *references* the divisor but the guard
+# does not establish either side; ``None`` means the frame does not
+# reference the divisor at all (caller should keep walking outward).
+KNOWN_ZERO = "KNOWN_ZERO"
+KNOWN_NONZERO = "KNOWN_NONZERO"
+UNKNOWN = "UNKNOWN"
+
+
+def _is_numeric_zero(e: Expr) -> bool:
+    """``NumberLit`` whose value is exactly 0."""
+    return isinstance(e, NumberLit) and e.value == 0
+
+
+def _is_numeric_nonzero_literal(e: Expr) -> bool:
+    """``NumberLit`` whose value is a non-zero number."""
+    return isinstance(e, NumberLit) and e.value != 0
+
+
+def _is_zero_equivalent(e: Expr) -> bool:
+    """Values the language treats as zero-equivalent in numeric
+    contexts: numeric ``0``, ``null``, and the empty string.
+    """
+    return _is_numeric_zero(e) or _is_null(e) or _is_empty_string(e)
+
+
+def _is_nonzero_equivalent(e: Expr) -> bool:
+    """Literals known to be non-zero / non-empty: a non-zero
+    ``NumberLit`` or a non-empty ``StringLit``.
+    """
+    if _is_numeric_nonzero_literal(e):
+        return True
+    if isinstance(e, StringLit) and e.value != "":
+        return True
+    return False
+
+
+def _flip_for_else(cls: str) -> str:
+    """In an else-branch, swap KNOWN_ZERO ↔ KNOWN_NONZERO; leave
+    ``UNKNOWN`` alone.
+    """
+    if cls == KNOWN_ZERO:
+        return KNOWN_NONZERO
+    if cls == KNOWN_NONZERO:
+        return KNOWN_ZERO
+    return UNKNOWN
+
+
+def _classify_magnitude_then(op: str, n: NumberLit) -> str:
+    """Classify a then-branch magnitude comparison ``Y <op> N`` where
+    ``N`` is a ``NumberLit``. Returns whether the interval excludes 0.
+
+    - ``Y >  N``: 0 excluded iff ``N >= 0``.
+    - ``Y >= N``: 0 excluded iff ``N >  0``.
+    - ``Y <  N``: 0 excluded iff ``N <= 0``.
+    - ``Y <= N``: 0 excluded iff ``N <  0``.
+    """
+    v = n.value
+    if op == ">":
+        return KNOWN_NONZERO if v >= 0 else UNKNOWN
+    if op == ">=":
+        return KNOWN_NONZERO if v > 0 else UNKNOWN
+    if op == "<":
+        return KNOWN_NONZERO if v <= 0 else UNKNOWN
+    if op == "<=":
+        return KNOWN_NONZERO if v < 0 else UNKNOWN
+    return UNKNOWN
+
+
+# Operators that flip when the operands are swapped (``a < b`` ≡ ``b > a``).
+_SWAP_OP: dict[str, str] = {
+    "<": ">",
+    "<=": ">=",
+    ">": "<",
+    ">=": "<=",
+    "=": "=",
+    "!=": "!=",
+}
+
+
+def classify_numeric_guard(cond: Expr, expr: Expr, branch: str) -> str | None:
+    """Classify what the guard ``cond`` (taken in ``branch`` =
+    ``"then"`` or ``"else"``) tells us about whether ``expr`` is
+    zero at the guarded point.
+
+    Returns one of ``KNOWN_ZERO``, ``KNOWN_NONZERO``, ``UNKNOWN``,
+    or ``None`` (``cond`` does not mention ``expr`` at all). Used by
+    SR041 (div-by-zero): the check walks ``ctx.if_stack`` from
+    innermost outward and uses the first non-``None`` result.
+
+    Cases (then-branch; for else-branch the result is flipped except
+    that ``UNKNOWN`` stays ``UNKNOWN``):
+
+    - ``! expr`` / ``not(expr)`` → ``KNOWN_ZERO`` (truthy-false ⇒ 0,
+      ``null``, or ``""``).
+    - bare ``expr`` (used as the entire condition) → ``KNOWN_NONZERO``
+      (truthy ⇒ non-zero, non-null, non-empty).
+    - ``expr = 0`` / ``expr = null`` / ``expr = ""`` → ``KNOWN_ZERO``.
+    - ``expr = <non-zero literal>`` or ``expr = "<non-empty string>"``
+      → ``KNOWN_NONZERO`` (value engagement; in this language a
+      non-empty string in a numeric context is treated as non-zero
+      and the developer is asserting the value is in use).
+    - ``expr = otherVar`` → ``UNKNOWN`` (we don't know other's value).
+    - ``expr != 0`` / ``expr != null`` / ``expr != ""`` →
+      ``KNOWN_NONZERO``.
+    - ``expr != <non-zero literal>`` → ``UNKNOWN``.
+    - ``expr > N`` / ``expr >= N`` / ``expr < N`` / ``expr <= N`` with
+      ``N`` a numeric literal — see ``_classify_magnitude_then``.
+    - Anything else referencing ``expr`` → ``UNKNOWN``.
+
+    The helper does not recurse into ``and`` / ``or`` combinators —
+    SR041 takes a conservative stance and treats compound conditions
+    as ``UNKNOWN`` when a sub-clause matches but the structure is
+    boolean. Callers can refine this later if real packs need it.
+    """
+    # Negation: ``!expr`` (defensive — language has no ``!`` token)
+    # or the built-in ``not(expr)``.
+    if isinstance(cond, UnaryOp) and cond.op == "!":
+        if expr_eq(cond.operand, expr):
+            cls = KNOWN_ZERO
+            return cls if branch == "then" else _flip_for_else(cls)
+        return None
+    if (
+        isinstance(cond, Call)
+        and isinstance(cond.callee, Identifier)
+        and cond.callee.name.lower() == "not"
+        and len(cond.args) == 1
+    ):
+        if expr_eq(cond.args[0], expr):
+            cls = KNOWN_ZERO
+            return cls if branch == "then" else _flip_for_else(cls)
+        return None
+
+    # Bare ``expr`` as the whole condition: truthy / presence check.
+    if expr_eq(cond, expr):
+        cls = KNOWN_NONZERO
+        return cls if branch == "then" else _flip_for_else(cls)
+
+    # Direct comparison: one side must be ``expr``.
+    if isinstance(cond, BinaryOp) and cond.op in {
+        "=", "!=", "<", "<=", ">", ">=",
+    }:
+        if expr_eq(cond.left, expr):
+            op = cond.op
+            other = cond.right
+        elif expr_eq(cond.right, expr):
+            # Swap so the form is always ``expr <op'> other``.
+            op = _SWAP_OP[cond.op]
+            other = cond.left
+        else:
+            return None
+
+        if op == "=":
+            if _is_zero_equivalent(other):
+                cls = KNOWN_ZERO
+            elif _is_nonzero_equivalent(other):
+                cls = KNOWN_NONZERO
+            else:
+                cls = UNKNOWN
+        elif op == "!=":
+            if _is_zero_equivalent(other):
+                cls = KNOWN_NONZERO
+            elif _is_nonzero_equivalent(other):
+                cls = UNKNOWN
+            else:
+                cls = UNKNOWN
+        elif op in {">", ">=", "<", "<="}:
+            if isinstance(other, NumberLit):
+                cls = _classify_magnitude_then(op, other)
+            else:
+                cls = UNKNOWN
+        else:
+            cls = UNKNOWN
+
+        return cls if branch == "then" else _flip_for_else(cls)
+
+    return None

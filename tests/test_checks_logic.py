@@ -179,3 +179,172 @@ def test_sr020_parens_are_transparent() -> None:
     br = _load("static_cond_parens.smartrule")
     assert _ast_sr020_lines(br) == {2}
 
+
+# ════════════════════════════════════════════════════════════════════
+# SR041 — DivByZeroCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+def _sr041(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR041"]
+
+
+# ── Positive — KNOWN_ZERO (error) ─────────────────────────────────
+
+
+def test_sr041_literal_zero_fires_error() -> None:
+    br = _load("div_zero_literal.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == "error"
+    assert f.category == "logic"
+    assert f.line == 1
+    assert "Division by zero" in f.message
+    assert "y / 0" in f.message
+
+
+def test_sr041_then_of_eq_zero_fires_error() -> None:
+    br = _load("div_zero_then_eq_zero.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert findings[0].line == 2  # the division line
+    assert "total / y" in findings[0].message
+
+
+def test_sr041_else_of_ne_zero_fires_error() -> None:
+    br = _load("div_zero_else_ne_zero.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert findings[0].line == 4
+
+
+def test_sr041_then_of_not_y_fires_error() -> None:
+    br = _load("div_zero_then_not_y.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert findings[0].line == 2
+
+
+# ── Positive — UNKNOWN (warning) ──────────────────────────────────
+
+
+def test_sr041_unguarded_simple_fires_warning() -> None:
+    br = _load("div_unguarded_simple.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == "warning"
+    assert f.line == 1
+    assert "not guarded" in f.message
+    assert "total / count" in f.message
+
+
+def test_sr041_unguarded_in_foreach_fires_warning() -> None:
+    br = _load("div_unguarded_in_foreach.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+
+
+def test_sr041_irrelevant_guard_fires_warning() -> None:
+    """Guard mentions a different variable; doesn't establish
+    anything about the divisor."""
+    br = _load("div_unguarded_irrelevant_guard.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+
+
+# ── Negative — KNOWN_NONZERO (silent) ─────────────────────────────
+
+
+def test_sr041_then_of_ne_zero_silent() -> None:
+    assert _sr041(_load("div_safe_ne_zero.smartrule")) == []
+
+
+def test_sr041_then_of_gt_zero_silent() -> None:
+    assert _sr041(_load("div_safe_gt_zero.smartrule")) == []
+
+
+def test_sr041_then_of_lt_zero_silent() -> None:
+    assert _sr041(_load("div_safe_lt_zero.smartrule")) == []
+
+
+def test_sr041_then_of_ge_one_silent() -> None:
+    """Boundary: ``y >= 1`` — N=1 > 0 → KNOWN_NONZERO. (``y >= 0``
+    would be UNKNOWN since 0 is included.)"""
+    assert _sr041(_load("div_safe_ge_one.smartrule")) == []
+
+
+def test_sr041_then_of_truthy_silent() -> None:
+    assert _sr041(_load("div_safe_truthy.smartrule")) == []
+
+
+def test_sr041_then_of_value_engagement_silent() -> None:
+    """``y = "ACTIVE"`` — equality to a non-empty string literal
+    → KNOWN_NONZERO."""
+    assert _sr041(_load("div_safe_value_engagement.smartrule")) == []
+
+
+def test_sr041_literal_nonzero_silent() -> None:
+    assert _sr041(_load("div_safe_literal_nonzero.smartrule")) == []
+
+
+def test_sr041_call_rhs_silent() -> None:
+    """Function-call divisor — conservative skip; can't reason about
+    return values."""
+    assert _sr041(_load("div_safe_call_rhs.smartrule")) == []
+
+
+# ── Edge ──────────────────────────────────────────────────────────
+
+
+def test_sr041_in_string_or_comment_silent() -> None:
+    """Tokenizer drops comments and treats string literals as opaque.
+    No ``BinaryOp("/")`` AST nodes exist for those texts."""
+    assert _sr041(_load("div_in_string_or_comment.smartrule")) == []
+
+
+# ── Real-pack regression ──────────────────────────────────────────
+
+
+def test_sr041_compound_guard_currently_unknown_documented() -> None:
+    """A compound ``and``/``or`` condition is currently treated as
+    UNKNOWN — SR041 fires a warning even though each conjunct alone
+    would establish KNOWN_NONZERO.
+
+    This is conservative behavior, deliberately not "smart". A future
+    refinement may classify each conjunct independently (e.g.
+    ``y > 0 and z > 0`` would split into ``y > 0`` and ``z > 0``,
+    each independently proving non-zero). Until that refinement
+    lands, this test pins the current contract: the warning fires
+    on the division, with the if-stack frame correctly classified
+    as UNKNOWN.
+    """
+    br = _load("div_compound_guard.smartrule")
+    findings = _sr041(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+
+
+def test_sr041_real_pack_update_document_process_documented() -> None:
+    br = _load("update_document_process.smartrule")
+    findings = _sr041(br)
+    for f in findings:
+        assert f.severity in ("error", "warning")
+        assert f.category == "logic"
+
+
+def test_sr041_real_pack_compute_template_order_documented() -> None:
+    br = _load("compute_template_order.smartrule")
+    findings = _sr041(br)
+    for f in findings:
+        assert f.severity in ("error", "warning")
+        assert f.category == "logic"
+

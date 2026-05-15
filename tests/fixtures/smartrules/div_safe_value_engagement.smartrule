@@ -1,0 +1,3 @@
+if (y = "ACTIVE") {
+    x := total / y;
+}
