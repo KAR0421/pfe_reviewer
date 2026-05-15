@@ -1,0 +1,2 @@
+// obj := getObject("X", id); msginfo(obj.F);
+msginfo("the comment above and the string 'obj := getObject(); obj.F' must not fire SR042");

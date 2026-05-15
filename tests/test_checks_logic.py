@@ -348,3 +348,189 @@ def test_sr041_real_pack_compute_template_order_documented() -> None:
         assert f.severity in ("error", "warning")
         assert f.category == "logic"
 
+
+# ════════════════════════════════════════════════════════════════════
+# SR042 — UnverifiedObjectCheck
+# ════════════════════════════════════════════════════════════════════
+
+
+def _sr042(br: FakeBizRule):
+    return [f for f in run_review(br).findings if f.rule_id == "SR042"]
+
+
+# ── Positive — UNKNOWN (warning) ──────────────────────────────────
+
+
+def test_sr042_unguarded_log_fires_warning() -> None:
+    br = _load("unverified_unguarded_log.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == "warning"
+    assert f.category == "logic"
+    assert f.line == 2
+    assert "obj" in f.message
+    assert "getObject" in f.message
+
+
+def test_sr042_unguarded_assign_fires_warning() -> None:
+    br = _load("unverified_unguarded_assign.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+    assert "findRecord" in findings[0].message
+
+
+def test_sr042_unguarded_chain_fires_warning() -> None:
+    """``obj.first.NAME`` — the inner FieldAccess root is ``obj``;
+    the use is detected on the outer chain and dedup'd on the inner.
+    """
+    br = _load("unverified_unguarded_chain.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+    assert "getSqlData" in findings[0].message
+
+
+def test_sr042_unguarded_method_fires_warning() -> None:
+    """``obj.refresh()`` — Call.callee is FieldAccess(obj, refresh)."""
+    br = _load("unverified_unguarded_method.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+
+
+def test_sr042_table_selector_source_fires_warning() -> None:
+    """``obj := other.TABLE[C = 1]`` — TableSelector RHS is also
+    a fallible source (no row may match)."""
+    br = _load("unverified_table_selector_source.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "warning"
+    assert findings[0].line == 2
+    assert "other.TABLE" in findings[0].message
+
+
+# ── Positive — KNOWN_NULL (error) ─────────────────────────────────
+
+
+def test_sr042_then_of_eq_null_fires_error() -> None:
+    """``if (obj = null) { obj.F ... }`` — guard proves obj is null
+    in the then-branch; dereference will crash."""
+    br = _load("unverified_then_of_eq_null.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    f = findings[0]
+    assert f.severity == "error"
+    assert f.line == 3
+    assert "null" in f.message.lower()
+
+
+def test_sr042_else_of_ne_null_fires_error() -> None:
+    """``if (obj != null) {} else { obj.F := v; }`` — else of presence
+    check is the null branch."""
+    br = _load("unverified_else_of_ne_null.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].severity == "error"
+    assert findings[0].line == 5
+
+
+# ── Negative — KNOWN_PRESENT (silent) ─────────────────────────────
+
+
+def test_sr042_then_of_ne_null_silent() -> None:
+    assert _sr042(_load("unverified_then_of_ne_null.smartrule")) == []
+
+
+def test_sr042_then_of_truthy_multiple_silent() -> None:
+    """Multiple uses inside the same presence-guarded then-branch —
+    all silent."""
+    assert _sr042(_load("unverified_then_of_truthy_multiple.smartrule")) == []
+
+
+def test_sr042_else_of_eq_null_silent() -> None:
+    assert _sr042(_load("unverified_else_of_eq_null.smartrule")) == []
+
+
+def test_sr042_value_engagement_silent() -> None:
+    """``if (obj = "VALIDATED")`` — equality to a non-empty literal
+    engages the value, implying presence."""
+    assert _sr042(_load("unverified_value_engagement.smartrule")) == []
+
+
+# ── Negative — non-fallible source (silent) ───────────────────────
+
+
+def test_sr042_int_source_silent() -> None:
+    """``obj := 5`` — integer, not in fallible sources."""
+    assert _sr042(_load("unverified_int_silent.smartrule")) == []
+
+
+def test_sr042_unknown_call_silent() -> None:
+    """``obj := computeStuff()`` — callee not in
+    FALLIBLE_OBJECT_SOURCES; silent."""
+    assert _sr042(_load("unverified_unknown_source_silent.smartrule")) == []
+
+
+def test_sr042_alias_direct_only_silent() -> None:
+    """v1 limitation: ``y := x`` does not propagate fallibility.
+    Use of y.F is silent even though x was fallible. Document
+    the limitation; refine if needed."""
+    assert _sr042(_load("unverified_alias_silent.smartrule")) == []
+
+
+# ── Negative — dedup ──────────────────────────────────────────────
+
+
+def test_sr042_dedup_silent_after_first_fire() -> None:
+    """``log(obj.F); log(obj.G);`` — only the first use fires;
+    same object, same risk class, already reported."""
+    br = _load("unverified_dedup_silent.smartrule")
+    findings = _sr042(br)
+    assert len(findings) == 1
+    assert findings[0].line == 2  # only the first use
+
+
+# ── Edge ──────────────────────────────────────────────────────────
+
+
+def test_sr042_in_string_or_comment_silent() -> None:
+    """Tokenizer drops comments and treats string literals as opaque.
+    No FieldAccess AST nodes exist for those texts."""
+    assert _sr042(_load("unverified_in_string_or_comment.smartrule")) == []
+
+
+def test_sr042_foreach_var_silent() -> None:
+    """``foreach x in some_list`` — x is loop-introduced, not from a
+    fallible AssignStmt. Silent by construction."""
+    assert _sr042(_load("unverified_foreach_var_silent.smartrule")) == []
+
+
+# ── Real-pack regression ──────────────────────────────────────────
+
+
+def test_sr042_real_pack_update_document_process_documented() -> None:
+    """Document SR042 findings on the real script.
+
+    UPDATE_DOCUMENT_PROCESS uses ``getObject``, ``findRecord`` and
+    similar fallible built-ins extensively; any findings are genuine
+    risk sites worth reviewing.
+    """
+    br = _load("update_document_process.smartrule")
+    findings = _sr042(br)
+    for f in findings:
+        assert f.severity in ("warning", "error")
+        assert f.category == "logic"
+
+
+def test_sr042_real_pack_compute_template_order_documented() -> None:
+    br = _load("compute_template_order.smartrule")
+    findings = _sr042(br)
+    for f in findings:
+        assert f.severity in ("warning", "error")
+        assert f.category == "logic"
+

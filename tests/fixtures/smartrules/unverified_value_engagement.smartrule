@@ -1,0 +1,4 @@
+obj := getObject("X", id);
+if (obj = "VALIDATED") {
+    obj.F := "v";
+}

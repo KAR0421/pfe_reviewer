@@ -1,0 +1,2 @@
+obj := other.TABLE[C = 1];
+msginfo(obj.F);

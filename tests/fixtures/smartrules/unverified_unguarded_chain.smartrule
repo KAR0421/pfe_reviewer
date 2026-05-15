@@ -1,0 +1,2 @@
+obj := getSqlData("select * from x");
+msginfo(obj.first.NAME);

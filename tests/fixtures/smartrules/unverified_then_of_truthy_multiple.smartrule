@@ -1,0 +1,5 @@
+obj := getObject("X", id);
+if (obj) {
+    msginfo(obj.F);
+    obj.F := "v";
+}

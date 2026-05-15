@@ -1,5 +1,0 @@
-if (obj.F[C] = null) {
-    x := 1;
-} else {
-    obj.F[C] := newValue;
-}

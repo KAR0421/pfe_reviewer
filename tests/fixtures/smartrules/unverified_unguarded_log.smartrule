@@ -1,0 +1,2 @@
+obj := getObject("X", id);
+msginfo(obj.F);

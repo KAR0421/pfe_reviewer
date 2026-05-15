@@ -1,0 +1,3 @@
+foreach x in some_list do {
+    msginfo(x.F);
+}

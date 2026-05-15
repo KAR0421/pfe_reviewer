@@ -30,7 +30,7 @@ class IfFrame:
 
     Pushed by the runner when descending into an ``IfStmt``'s
     ``then_branch`` or ``else_branch`` and popped on exit. Checks that
-    care about guarded code (e.g. SR058's existence-check detection)
+    care about guarded code (e.g. SR042's existence-check detection)
     read the stack via ``CheckContext.if_stack`` / ``in_if()``.
     """
 

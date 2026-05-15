@@ -1,0 +1,2 @@
+obj := findRecord("DOC", id);
+obj.STATUS := "OK";

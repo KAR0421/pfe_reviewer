@@ -6,9 +6,12 @@ Currently implements:
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from reviewer.ast.nodes import (
     AbortStmt,
     ArrayIndex,
+    AssignStmt,
     BinaryOp,
     Block,
     Call,
@@ -333,3 +336,259 @@ class DivByZeroCheck(Check):
                 "it can be zero at runtime, the rule will crash."
             ),
         )
+
+
+# ── SR042 UnverifiedObjectCheck ────────────────────────────────────
+
+
+from ._guards import (  # noqa: E402
+    EMPTINESS_CHECK,
+    PRESENCE_CHECK,
+    VALUE_ENGAGEMENT,
+    classify_comparison,
+)
+
+
+# Built-in callees documented to potentially return null/empty/no-row.
+# A bare-Identifier assignment whose RHS is a ``Call`` to one of these
+# names tags the LHS as "fallible-typed" — its existence is unverified
+# until guarded. Names are matched case-sensitively (NeoXam built-ins
+# use camelCase).
+FALLIBLE_OBJECT_SOURCES: frozenset[str] = frozenset({
+    "getObject",
+    "getObjects",
+    "getObjectIdByCode",
+    "getSqlData",
+    "getData",
+    "findRecord",
+})
+
+
+@dataclass
+class _IfFrame:
+    """Lightweight if-frame used by SR042's whole-script walker.
+
+    SR042 cannot rely on ``ctx.if_stack`` because it runs the whole
+    analysis from a single ``visit_Script`` call — it needs its own
+    flow-tracked stack maintained while it walks the AST in source
+    order.
+    """
+
+    cond: Expr
+    branch: str  # "then" or "else"
+
+
+@register_check(
+    rule_id="SR042",
+    category="logic",
+    severity="warning",
+    description=(
+        "Object obtained from a fallible source is used without a "
+        "prior existence check"
+    ),
+)
+class UnverifiedObjectCheck(Check):
+    """Flag the first unguarded use of an object obtained from a
+    fallible NeoXam built-in (``getObject``, ``getObjects``,
+    ``getObjectIdByCode``, ``getSqlData``, ``getData``,
+    ``findRecord``) or from a ``TableSelector`` RHS.
+
+    Implements SPEC §6 SR042. Replaces the old SR058
+    ``AutoCreateAssignCheck`` with a single existence-check at the
+    object level: per-operation flagging was too noisy. The new
+    contract is "check the object once, use it freely after."
+
+    Whole-script analysis. Two passes:
+
+    1. **Collect** — scan every ``AssignStmt`` whose target is a bare
+       ``Identifier``. If the RHS is a ``Call`` whose callee name is in
+       ``FALLIBLE_OBJECT_SOURCES``, or a ``TableSelector``, the LHS
+       name becomes a *fallible identifier* — its existence is
+       unverified until guarded. The first fallible assignment per
+       name wins (used in the warning message).
+
+    2. **Walk** — single source-order walk maintaining an internal
+       if-frame stack and a monotonic ``fired`` set:
+
+       - At each ``FieldAccess`` whose root identifier is a fallible
+         identifier not already in ``fired``, classify under the
+         current if-stack via ``classify_comparison`` (innermost
+         outward; first frame that mentions the identifier decides):
+
+         - ``PRESENCE_CHECK`` then-branch / ``EMPTINESS_CHECK``
+           else-branch / ``VALUE_ENGAGEMENT`` either branch →
+           *KNOWN_PRESENT* → silent.
+         - ``EMPTINESS_CHECK`` then-branch / ``PRESENCE_CHECK``
+           else-branch → *KNOWN_NULL* → fire **error**, add to
+           ``fired``.
+         - No frame mentions the identifier → *UNKNOWN* → fire
+           **warning**, add to ``fired``.
+
+       - The ``fired`` set is monotonic across the whole script —
+         once a finding has been emitted for an object, subsequent
+         dereferences anywhere in the same script are silent. Same
+         object, same risk class, already reported.
+
+    A "use" of identifier ``X`` is any ``FieldAccess`` whose root
+    target chain ends in ``Identifier(X)`` — read ``X.F``, write
+    ``X.F := v`` (the AssignStmt's target is walked as a sub-expression),
+    method call ``X.method()`` (``Call.callee`` is the FieldAccess),
+    nested chain ``X.first.NAME`` (the inner FieldAccess root is ``X``).
+    Bare ``Identifier(X)`` as a comparison operand or as a function
+    argument is **not** a use — it's a check or a pass-through.
+
+    Limitations (intentional, v1):
+
+    - **Direct fallibility only.** ``y := x`` where ``x`` is a fallible
+      identifier does *not* propagate fallibility to ``y``. A future
+      refinement may track aliasing.
+    - **Reassignment doesn't clear fallibility.** ``obj := getObject(); obj := 5; log(obj.F)``
+      still flags the dereference even though ``obj`` is now an int.
+      Unusual pattern; refine if real packs trip on it.
+    - **``foreach`` loop variables are silent.** They are not
+      introduced by an explicit ``AssignStmt``, so they are never
+      added to the fallible set.
+    - **Compound ``and``/``or`` guard conditions** inherit
+      ``classify_comparison``'s "strongest classification wins"
+      behaviour: a compound that includes a presence-check on the
+      object will silence in the then-branch.
+    """
+
+    def visit_Script(self, node: Script) -> None:
+        fallible: dict[str, tuple[int, str]] = {}
+        self._collect_fallible(node, fallible)
+        if not fallible:
+            return
+        if_stack: list[_IfFrame] = []
+        fired: set[str] = set()
+        for child in node.children():
+            self._walk(child, fallible, if_stack, fired)
+
+    def _collect_fallible(
+        self, node: Node, fallible: dict[str, tuple[int, str]]
+    ) -> None:
+        if isinstance(node, AssignStmt) and isinstance(
+            node.target, Identifier
+        ):
+            name = node.target.name
+            if name not in fallible:
+                label = self._fallible_label(node.value)
+                if label is not None:
+                    fallible[name] = (node.line, label)
+        for child in node.children():
+            self._collect_fallible(child, fallible)
+
+    def _fallible_label(self, expr: Expr) -> str | None:
+        if (
+            isinstance(expr, Call)
+            and isinstance(expr.callee, Identifier)
+            and expr.callee.name in FALLIBLE_OBJECT_SOURCES
+        ):
+            return f"{expr.callee.name}(...)"
+        if isinstance(expr, TableSelector):
+            return expr_repr(expr)
+        return None
+
+    def _walk(
+        self,
+        node: Node,
+        fallible: dict[str, tuple[int, str]],
+        if_stack: list[_IfFrame],
+        fired: set[str],
+    ) -> None:
+        # Branch handling: walk the cond (uses inside it count!), then
+        # push a frame for each branch and recurse with that frame on
+        # the stack.
+        if isinstance(node, IfStmt):
+            self._walk(node.cond, fallible, if_stack, fired)
+            if_stack.append(_IfFrame(node.cond, "then"))
+            try:
+                self._walk(node.then_branch, fallible, if_stack, fired)
+            finally:
+                if_stack.pop()
+            if node.else_branch is not None:
+                if_stack.append(_IfFrame(node.cond, "else"))
+                try:
+                    self._walk(node.else_branch, fallible, if_stack, fired)
+                finally:
+                    if_stack.pop()
+            return
+
+        # Use detection: any FieldAccess whose root identifier is a
+        # not-yet-fired fallible identifier.
+        if isinstance(node, FieldAccess):
+            root = self._root_identifier(node)
+            if (
+                root is not None
+                and root.name in fallible
+                and root.name not in fired
+            ):
+                self._handle_use(root.name, node, fallible, if_stack, fired)
+
+        for child in node.children():
+            self._walk(child, fallible, if_stack, fired)
+
+    def _root_identifier(self, expr: Expr) -> Identifier | None:
+        """Walk down a FieldAccess chain until we find the leaf
+        target. Returns the Identifier if the chain bottoms out in
+        one, else None.
+        """
+        cur: Expr = expr
+        while isinstance(cur, FieldAccess):
+            cur = cur.target
+        return cur if isinstance(cur, Identifier) else None
+
+    def _handle_use(
+        self,
+        name: str,
+        use_expr: FieldAccess,
+        fallible: dict[str, tuple[int, str]],
+        if_stack: list[_IfFrame],
+        fired: set[str],
+    ) -> None:
+        target = Identifier(name=name)
+        decided: str | None = None  # "PRESENT" or "NULL"
+        guard_line: int = 0
+        for frame in reversed(if_stack):
+            cls = classify_comparison(frame.cond, target)
+            if cls is None:
+                continue
+            guard_line = frame.cond.line
+            if cls == VALUE_ENGAGEMENT:
+                decided = "PRESENT"
+                break
+            if cls == EMPTINESS_CHECK:
+                decided = "NULL" if frame.branch == "then" else "PRESENT"
+                break
+            if cls == PRESENCE_CHECK:
+                decided = "PRESENT" if frame.branch == "then" else "NULL"
+                break
+
+        if decided == "PRESENT":
+            return
+
+        src_line, src_label = fallible[name]
+        if decided == "NULL":
+            self.ctx.emit(
+                line=use_expr.line,
+                severity="error",
+                message=(
+                    f"Object '{name}' is used at line {use_expr.line} "
+                    f"in a branch where the enclosing guard (line "
+                    f"{guard_line}) proves it is null/empty. This "
+                    "will crash."
+                ),
+            )
+        else:
+            self.ctx.emit(
+                line=use_expr.line,
+                severity="warning",
+                message=(
+                    f"Object '{name}' (obtained from `{src_label}` at "
+                    f"line {src_line}) is used at line {use_expr.line} "
+                    "without an existence check. If the source "
+                    "returned null, this will crash."
+                ),
+            )
+        fired.add(name)
+

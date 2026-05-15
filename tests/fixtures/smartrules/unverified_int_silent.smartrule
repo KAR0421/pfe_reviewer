@@ -1,0 +1,2 @@
+obj := 5;
+msginfo(obj.F);

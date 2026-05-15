@@ -1,3 +1,0 @@
-if (obj.G[C2] != null) {
-    obj.F[C] := newValue;
-}

@@ -1,0 +1,3 @@
+x := getObject("X", id);
+y := x;
+msginfo(y.F);

@@ -717,7 +717,7 @@ class RepeatedFieldReadCheck(Check):
             self._collect_read(target.target, events)
             return
         # TableSelector / ArrayIndex / etc. — not tracked as a write
-        # for SR034 purposes (SR058 owns auto-create on TableSelector).
+        # for SR034 purposes (SR042 owns object existence checks).
         # Still walk into them so reads inside conditions/indices are
         # captured.
         self._collect_read(target, events)

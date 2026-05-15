@@ -2,7 +2,8 @@
 in ``IfStmt`` conditions whose role is to make a subsequent statement
 safe.
 
-Currently used by SR058 (unintended record auto-create). The helpers
+Currently used by SR042 (unverified-object existence check) and
+SR041 (div-by-zero). The helpers
 are module-level so that future flow-sensitive checks
 (SR042 null-guarded field access, future SR041 div-by-zero refinement)
 can share the structural-equality and comparison-classification logic.
@@ -32,8 +33,8 @@ def expr_eq(a: Expr, b: Expr) -> bool:
     every component matches recursively. ``StringLit`` ignores the
     ``quote`` field — ``""`` and ``''`` are the same value.
 
-    Used by SR058 to decide "is the TableSelector in this assignment
-    the same one referenced in the enclosing if-condition?"
+    Used by SR042 to decide "is the object referenced at this use
+    site the same one referenced in the enclosing if-condition?"
     """
     if type(a) is not type(b):
         return False
@@ -84,7 +85,7 @@ def tableselector_structural_eq(a: TableSelector, b: TableSelector) -> bool:
 # ── Comparison classification ──────────────────────────────────────
 
 
-# Classifications, ordered by how strongly they suppress an SR058
+# Classifications, ordered by how strongly they suppress an SR042
 # finding when found in an enclosing if-condition.
 EMPTINESS_CHECK = "EMPTINESS_CHECK"
 PRESENCE_CHECK = "PRESENCE_CHECK"
@@ -113,69 +114,61 @@ def _is_empty_marker(e: Expr) -> bool:
     return _is_null(e) or _is_empty_string(e)
 
 
-def classify_comparison(cond: Expr, ts: TableSelector) -> str | None:
-    """Classify how the ``TableSelector`` ``ts`` is referenced inside
+def classify_comparison(cond: Expr, target: Expr) -> str | None:
+    """Classify how the expression ``target`` is referenced inside
     the boolean expression ``cond``.
 
-    Returns one of ``EMPTINESS_CHECK``, ``PRESENCE_CHECK``,
-    ``VALUE_ENGAGEMENT``, or ``None`` (``ts`` is not referenced in
-    ``cond`` at all). Used by SR058 to decide whether an enclosing
-    ``IfStmt`` covers an assignment to ``ts``:
+    ``target`` is matched structurally via ``expr_eq``, so it works
+    for any expression — a bare ``Identifier`` (used by SR042 to
+    track null-guarded objects), a ``TableSelector``, a ``FieldAccess``,
+    etc.
 
-    - **EMPTINESS_CHECK** — ``ts = null``, ``ts = ""``, or ``! ts``.
-      The condition is true exactly when the row is missing.
-    - **PRESENCE_CHECK** — ``ts != null``, ``ts != ""``, or bare ``ts``.
-      The condition is true exactly when the row is present.
-    - **VALUE_ENGAGEMENT** — any other comparison that touches ``ts``
-      (``ts = "VALIDATED"``, ``ts > 5``, ``ts != someVar``, …). The
-      developer reads the value, implicitly asserting it exists; the
-      assignment is safe in either branch.
+    Returns one of ``EMPTINESS_CHECK``, ``PRESENCE_CHECK``,
+    ``VALUE_ENGAGEMENT``, or ``None`` (``target`` is not referenced in
+    ``cond`` at all):
+
+    - **EMPTINESS_CHECK** — ``target = null``, ``target = ""``, or
+      ``not(target)``. The condition is true exactly when the value is
+      missing/empty/null.
+    - **PRESENCE_CHECK** — ``target != null``, ``target != ""``, or
+      bare ``target``. The condition is true exactly when the value
+      is present.
+    - **VALUE_ENGAGEMENT** — any other comparison that touches
+      ``target`` (``target = "VALIDATED"``, ``target > 5``,
+      ``target != someVar``, …). The developer reads the value,
+      implicitly asserting it exists.
 
     For boolean combinators (``and`` / ``or``), recurse into both
     operands and return the strongest classification found, where
     ``VALUE_ENGAGEMENT`` > ``PRESENCE_CHECK`` > ``EMPTINESS_CHECK``.
-    Strength is defined as "most likely to leave the assignment
-    silent": the most permissive classification wins, because adding
-    extra clauses to a condition shouldn't *create* a finding that
-    a simpler version of the same guard wouldn't have produced.
+    The most permissive classification wins so that adding extra
+    clauses to a condition can't *create* a finding that a simpler
+    version of the same guard wouldn't have produced.
     """
     # ── ``and`` / ``or``: combine sub-classifications. ──
     if isinstance(cond, BinaryOp) and cond.op.lower() in ("and", "or"):
-        left = classify_comparison(cond.left, ts)
-        right = classify_comparison(cond.right, ts)
+        left = classify_comparison(cond.left, target)
+        right = classify_comparison(cond.right, target)
         return _strongest(left, right)
 
-    # ── Unary not: invert a presence/emptiness classification. ──
-    # The language has no ``!`` token; logical negation is the
-    # built-in call ``not(expr)``. We also accept ``UnaryOp("!", ...)``
-    # defensively in case the grammar gains a unary-not later.
+    # ── Unary not / not(...) call: invert presence/emptiness. ──
     if isinstance(cond, UnaryOp) and cond.op == "!":
-        inner = cond.operand
-        return _invert(_classify_inner(inner, ts))
+        return _invert(_classify_inner(cond.operand, target))
     if (
         isinstance(cond, Call)
         and isinstance(cond.callee, Identifier)
         and cond.callee.name.lower() == "not"
         and len(cond.args) == 1
     ):
-        return _invert(_classify_inner(cond.args[0], ts))
+        return _invert(_classify_inner(cond.args[0], target))
 
     # ── Direct comparison: classify based on op + the *other* side. ──
     if isinstance(cond, BinaryOp) and cond.op in {
-        "=",
-        "!=",
-        "<",
-        "<=",
-        ">",
-        ">=",
+        "=", "!=", "<", "<=", ">", ">=",
     }:
-        if isinstance(cond.left, TableSelector) and tableselector_structural_eq(
-            cond.left, ts
-        ):
+        if expr_eq(cond.left, target):
             other = cond.right
-        elif isinstance(
-            cond.right, TableSelector
-        ) and tableselector_structural_eq(cond.right, ts):
+        elif expr_eq(cond.right, target):
             other = cond.left
         else:
             return None
@@ -186,8 +179,8 @@ def classify_comparison(cond: Expr, ts: TableSelector) -> str | None:
         # <, <=, >, >= — value comparison, asserts presence implicitly.
         return VALUE_ENGAGEMENT
 
-    # ── Bare TS as the entire condition: presence/truthy check. ──
-    if isinstance(cond, TableSelector) and tableselector_structural_eq(cond, ts):
+    # ── Bare target as the entire condition: presence/truthy check. ──
+    if expr_eq(cond, target):
         return PRESENCE_CHECK
 
     return None
@@ -198,20 +191,17 @@ def _strongest(a: str | None, b: str | None) -> str | None:
     return a if _RANK[a] >= _RANK[b] else b
 
 
-def _classify_inner(inner: Expr, ts: TableSelector) -> str | None:
+def _classify_inner(inner: Expr, target: Expr) -> str | None:
     """Classify the operand of a ``not(...)`` / ``!`` wrapper.
 
-    Bare-TS inside negation is an EMPTINESS_CHECK directly
-    (``not(TS)`` / ``!TS`` ≡ "TS is missing"). Anything else is
-    classified normally so the outer ``_invert`` call can flip it.
+    Bare ``target`` inside negation is treated as PRESENCE_CHECK on
+    the inner side; the outer ``_invert`` flips it to EMPTINESS_CHECK
+    (``not(X)`` ≡ "X is missing"). Anything else is classified
+    normally and then inverted.
     """
-    if isinstance(inner, TableSelector) and tableselector_structural_eq(
-        inner, ts
-    ):
-        # ``not(TS)`` reads as PRESENCE_CHECK on the inner side; the
-        # outer ``_invert`` will flip it to EMPTINESS_CHECK.
+    if expr_eq(inner, target):
         return PRESENCE_CHECK
-    return classify_comparison(inner, ts)
+    return classify_comparison(inner, target)
 
 
 def _invert(cls: str | None) -> str | None:

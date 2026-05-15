@@ -1,0 +1,6 @@
+obj := getObject("X", id);
+if (obj != null) {
+    msginfo("present");
+} else {
+    obj.F := "v";
+}

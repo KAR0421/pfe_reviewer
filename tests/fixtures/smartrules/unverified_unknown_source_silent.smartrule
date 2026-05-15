@@ -1,0 +1,2 @@
+obj := computeStuff();
+msginfo(obj.F);
