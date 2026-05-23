@@ -357,7 +357,37 @@ once at import via `importlib.resources` from
 `reviewer/reporters/assets/`, so the rendered HTML remains a single
 self-contained file with no external requests.
 
-## 10. Open questions
+## 10. Bitbucket integration
+
+[`reviewer/integrations/bitbucket_poster.py`](../reviewer/integrations/bitbucket_poster.py)
+posts the Markdown comment rendered by `comment_formatter` to a
+Bitbucket Server pull request via the v1.0 REST API. **This module
+is the only place in the reviewer that makes outbound network
+calls** — every other component is pure or strictly local I/O.
+
+- **Endpoint:** `POST {bitbucket_url}/rest/api/1.0/projects/{project}/repos/{repo}/pull-requests/{pr_id}/comments`
+- **Body:** `{"text": "<markdown>"}` (UTF-8 JSON)
+- **Auth:** HTTP Basic with username + Personal Access Token (PAT),
+  read from the `BB_USERNAME` and `BB_TOKEN` environment variables
+  (both required, non-empty).
+- **Transport:** standard-library `urllib.request` only — no third-party
+  HTTP client. The reviewer remains dependency-free.
+- **Error model:** `BitbucketPostError(status_code, body)` — HTTP errors
+  carry the response code; connection failures use `status_code=0`.
+
+CLI invocation:
+
+```
+python -m reviewer.integrations.bitbucket_poster report.json \
+    --bitbucket-url https://bitbucket.my-nx.com \
+    --project IM --repo nximpress --pr 123 \
+    [--report-url https://ci/reports/123.html]
+```
+
+Exit codes: `0` on success (prints `Comment posted: <id>`), `1` on
+post failure, `2` if `BB_USERNAME` or `BB_TOKEN` is missing.
+
+## 11. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
   can use for SR050/SR061 (dependency existence)?
 - What defines "previous version" for SR08x — previous git commit, previous
