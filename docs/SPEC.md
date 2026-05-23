@@ -287,7 +287,41 @@ comment + inline for `severity >= warning`).
 
 [^sr042]: `UnverifiedObjectCheck` is whole-script analysis with two passes. **Pass 1** scans every `AssignStmt` whose target is a bare `Identifier` and records the LHS as *fallible* if the RHS is either (a) a `Call` whose callee name is in the module-level constant `FALLIBLE_OBJECT_SOURCES = {getObject, getObjects, getObjectIdByCode, getSqlData, getData, findRecord}` (case-sensitive — these are NeoXam built-ins documented to potentially return null/empty/no-row), or (b) a `TableSelector` (no row may match). The first fallible assignment per name wins (used in the warning message). **Pass 2** is a single source-order walk over the script maintaining an internal if-frame stack and a monotonic `fired` set. At each `FieldAccess` whose root identifier (walking down the chain) is a not-yet-fired fallible identifier, the check classifies under the current if-stack via the generalised `classify_comparison` helper from `_guards.py` (innermost outward; first frame that mentions the identifier decides). Three outcomes: **PRESENCE_CHECK then-branch / EMPTINESS_CHECK else-branch / VALUE_ENGAGEMENT either branch** → *KNOWN_PRESENT* → silent. **EMPTINESS_CHECK then-branch / PRESENCE_CHECK else-branch** → *KNOWN_NULL* → fire **error**. **No frame mentions the identifier** → *UNKNOWN* → fire **warning**. The `fired` set is monotonic across the whole script — once a finding has been emitted for an object, subsequent dereferences anywhere in the same script are silent (same object, same risk class, already reported). A "use" is any `FieldAccess` whose root chain ends in a fallible `Identifier` — read `X.F`, write `X.F := v` (the AssignStmt's target is walked as a sub-expression), method call `X.method()` (`Call.callee` is the `FieldAccess`), nested chain `X.first.NAME` (the inner `FieldAccess` root is `X`, dedup'd by the monotonic `fired` set after the outer chain fires once). Bare `Identifier(X)` as a comparison operand or as a function argument is **not** a use — it's a check or a pass-through. **v1 limitations:** direct fallibility only (`y := x` does not propagate); reassignment doesn't clear fallibility (`obj := getObject(); obj := 5; log(obj.F)` still flags); `foreach` loop variables are silent (no explicit `AssignStmt`). Compound `and`/`or` guards inherit `classify_comparison`'s "strongest classification wins" behaviour, so a compound containing a presence-check on the object silences the then-branch. Real-pack impact (May 2026): three findings on the production packs — `process` in `UPDATE_DOCUMENT_PROCESS` line 95 (from `getObject` line 94), `reportData` line 30 (from `getObject` line 5), `repScopeClassObj` line 122 (from `getObject` line 121). All three are real null-risk sites worth reviewing.
 
-## 9. Open questions
+## 9. Output formats
+
+### Console (default)
+`python main.py [PATH]` walks `PATH` (default `.`) for every
+`*.pack*.xml`, runs the reviewer on each BizRule, and prints a
+text block per BizRule: header, comment, scope, script preview,
+then the numbered finding list (or `"no issues found."`).
+
+### JSON via `--output`
+`python main.py [PATH] --output report.json` additionally writes
+a structured JSON report. Add `--quiet` to suppress console output
+for headless CI use:
+
+```
+python main.py --output report.json --quiet
+```
+
+Schema is documented (and stable) in the module docstring at the top
+of [`reviewer/reporters/json_reporter.py`](../reviewer/reporters/json_reporter.py).
+Key invariants:
+
+- UTF-8, indented by 2 spaces, non-ASCII preserved (`ensure_ascii=False`).
+- Findings within each BizRule are sorted by `(line, rule_id)`.
+- `summary.by_severity` always contains all three severity keys
+  (zero when unused); `summary.by_category` only lists categories
+  with at least one finding.
+- `metadata.timestamp` is ISO-8601 UTC with a trailing `Z`
+  (no microseconds, no offset).
+- `metadata.tool` is `"REVIEWER"`, `metadata.version` is the
+  reporter's `TOOL_VERSION` constant (currently `1.0.0`).
+
+The JSON shape is consumed by the future Bitbucket PR integration
+(§7 Phase C) and by dashboards / diffing tooling.
+
+## 10. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
   can use for SR050/SR061 (dependency existence)?
 - What defines "previous version" for SR08x — previous git commit, previous
