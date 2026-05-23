@@ -334,6 +334,29 @@ whitespace collapsed) and truncated to 200 characters. The format is
 informal — not part of any external schema contract; the module
 docstring is the authority. Used by the future M3 Bitbucket integration.
 
+### HTML report via `html_reporter`
+[`reviewer/reporters/html_reporter.py`](../reviewer/reporters/html_reporter.py)
+renders the JSON dict as a single self-contained HTML document
+(no external CSS, JS, fonts, or icons) suitable for use as a Jenkins
+build artifact. Exposes `to_html_string(report_data)` (pure) and
+`write_html(report_data, output_path)` (creates parent dirs).
+Layout: summary banner, optional table of contents (when more than
+one pack), one `<section>` per pack with per-BizRule findings tables,
+and a footer. Severity is shown with the same emoji vocabulary as the
+comment formatter (🔴 🟡 🔵). All user-supplied content is escaped via
+`html.escape`. The HTML structure is informal — no schema contract;
+the format may evolve. Styled with the **COMET NeoXam dark visual
+identity**: dark navy panels (`#0a1426` / `#131c2e`), teal accent
+(`#1ec8b4`) on headings, links, and borders, white headings on dark
+background. Header carries the NeoXam X-mark logo with the
+"REVIEWER — Static Analysis for BizRule" wordmark; footer adds a
+"Powered by NeoXam REVIEWER" line with the same X-mark. All SVGs are
+inline; no external fonts/icons/scripts. The official NeoXam logos
+(icon + wordmark) are embedded as inline base64 PNG data URIs loaded
+once at import via `importlib.resources` from
+`reviewer/reporters/assets/`, so the rendered HTML remains a single
+self-contained file with no external requests.
+
 ## 10. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
   can use for SR050/SR061 (dependency existence)?
