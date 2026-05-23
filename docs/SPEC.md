@@ -321,6 +321,19 @@ Key invariants:
 The JSON shape is consumed by the future Bitbucket PR integration
 (§7 Phase C) and by dashboards / diffing tooling.
 
+### Markdown PR comment via `comment_formatter`
+[`reviewer/reporters/comment_formatter.py`](../reviewer/reporters/comment_formatter.py)
+exposes a single function `format_comment(report_data, *, report_url=None)`
+that takes the JSON dict and returns a short Markdown string suitable
+for posting as a single Bitbucket PR comment. Layout: a header line,
+a summary line (`{E} errors • {W} warnings • {I} info`), a "Top issues"
+section showing up to three findings ranked by severity priority
+(error > warning > info, source order within a severity), and a link
+back to the full report. Messages are flattened (newlines stripped,
+whitespace collapsed) and truncated to 200 characters. The format is
+informal — not part of any external schema contract; the module
+docstring is the authority. Used by the future M3 Bitbucket integration.
+
 ## 10. Open questions
 - Is there an authoritative list of valid object / class names the reviewer
   can use for SR050/SR061 (dependency existence)?
