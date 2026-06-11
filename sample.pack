@@ -267,8 +267,7 @@ if(arraysize(matchingProcess) > 0) {
                         process.CONTRIB_DOCUMENT := contribution;
                         process.CONTRIBUTION_RECEIVED_DATE := contribution.RECEIPT_DATETIME;
                         saveObjectsImmediately(process);
-                        msginfo("Process : " +  process + " has been updated");
-                        arrayappend(arrayProcess, process.REPORT_PROC_ID);
+                         arrayappend(arrayProcess, process.REPORT_PROC_ID);
                 }
             }
         }
