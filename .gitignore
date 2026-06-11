@@ -44,3 +44,6 @@ dist/
 *.html.bak
 report.json
 out/
+
+report.html
+report.json
