@@ -1,4 +1,12 @@
-"""Entry point: review every ``*.pack*.xml`` in a directory.
+"""Entry point: review pack files.
+
+Two input modes:
+  - Directory mode: ``python main.py <dir>`` globs for ``*.pack`` and
+    ``*.pack*.xml`` under ``<dir>``.
+  - File-list mode: ``python main.py --files f1.pack f2.pack ...`` processes
+    the given paths directly (intended for CI/Jenkins).
+
+Exactly one mode must be supplied; providing both or neither is an error.
 
 Console output is the default. ``--output PATH`` additionally writes a
 JSON report (see ``reviewer/reporters/json_reporter.py`` for the
@@ -8,6 +16,7 @@ schema). ``--quiet`` suppresses console output (combine with
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 from parser import extract_bizrules
@@ -45,13 +54,22 @@ def _review_pack(xml_path: Path, *, quiet: bool):
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         prog="reviewer",
-        description="Review every *.pack*.xml in a directory.",
+        description=(
+            "Review pack files. Pass a directory to glob for packs, "
+            "or use --files to supply an explicit list."
+        ),
     )
     p.add_argument(
         "path",
         nargs="?",
-        default=".",
-        help="Directory to search for *.pack*.xml files (default: .)",
+        default=None,
+        help="Directory to search for *.pack / *.pack*.xml files.",
+    )
+    p.add_argument(
+        "--files",
+        nargs="+",
+        metavar="FILE",
+        help="Explicit list of pack file paths to review (for CI/Jenkins).",
     )
     p.add_argument(
         "--output",
@@ -68,16 +86,45 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    root = Path(args.path)
-    pack_files = sorted(root.glob("*.pack*.xml"))
+
+    if args.path is not None and args.files:
+        print(
+            "error: --files and a positional directory are mutually exclusive. "
+            "Provide one or the other.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.path is None and not args.files:
+        print(
+            "error: provide a directory path or --files <file ...>.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.files:
+        pack_files = []
+        for f in args.files:
+            p = Path(f)
+            if not p.exists():
+                print(f"error: file not found: {f}", file=sys.stderr)
+                return 2
+            if not p.is_file():
+                print(f"error: not a file: {f}", file=sys.stderr)
+                return 2
+            pack_files.append(p)
+        directory = str(Path(args.files[0]).resolve().parent)
+    else:
+        root = Path(args.path)
+        pack_files = sorted(set(root.glob("*.pack")) | set(root.glob("*.pack*.xml")))
+        directory = str(root.resolve())
+
     if not pack_files:
         if not args.quiet:
-            print(f"No .pack.xml files found in {root.resolve()}.")
+            print(f"No pack files found in {directory}.")
         if args.output:
             json_reporter.write_json(
-                json_reporter.to_json_dict(
-                    [], directory=str(root.resolve())
-                ),
+                json_reporter.to_json_dict([], directory=directory),
                 args.output,
             )
         return 0
@@ -88,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.output:
         data = json_reporter.to_json_dict(
-            packs_with_reports, directory=str(root.resolve())
+            packs_with_reports, directory=directory
         )
         json_reporter.write_json(data, args.output)
         if not args.quiet:
@@ -98,5 +145,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
