@@ -423,7 +423,7 @@ def test_try_without_onerror_is_parse_error() -> None:
 def test_if_then_branch_may_omit_semicolon_before_else() -> None:
     """A single-statement then-branch may drop its trailing ``;`` before ``else``.
 
-    Mirrors a real construct found in sample.pack.xml around line 47, where
+    Mirrors a real construct found in sample.pack around line 47, where
     a multi-line string-concatenated assignment is followed directly by
     ``else`` with no terminating ``;``.
     """

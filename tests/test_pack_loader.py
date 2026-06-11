@@ -146,16 +146,16 @@ def test_extract_trigger_with_non_numeric_trigger_type(tmp_path: Path) -> None:
 
 
 def test_real_sample_pack_has_names_and_triggers() -> None:
-    """Regression: the real ``sample.pack.xml`` must yield at least
+    """Regression: the real ``sample.pack`` must yield at least
     one display name and at least one trigger on its first BizRule.
 
     Guards against a future refactor that breaks the R_/T_ wrapper
     handling on actual NeoXam DataHub exports.
     """
-    sample = REPO_ROOT / "sample.pack.xml"
+    sample = REPO_ROOT / "sample.pack"
     rules = extract_bizrules(str(sample))
 
-    assert rules, "sample.pack.xml extracted no rules"
+    assert rules, "sample.pack extracted no rules"
     br = rules[0]
     assert isinstance(br, BizRule)
     assert br.display_names, (

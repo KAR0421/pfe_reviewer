@@ -521,7 +521,7 @@ def test_sr034_in_string_or_comment_silent() -> None:
 
 
 def test_sr034_real_pack_update_document_process_documented() -> None:
-    """Real script from sample.pack.xml. Document the count so any
+    """Real script from sample.pack. Document the count so any
     future regression that changes detection sensitivity surfaces in
     a diff. The exact count is whatever the analyzer naturally finds;
     these are *findings*, not test failures.

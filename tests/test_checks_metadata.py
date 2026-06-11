@@ -66,7 +66,7 @@ def test_sr011_one_display_name_silent() -> None:
 
 def test_sr011_real_pack_update_document_process_silent() -> None:
     """Production fixture has display names in two languages."""
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack.xml"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample.pack"))
     target = next(b for b in brs if b.name == "UPDATE_DOCUMENT_PROCESS")
     assert _findings(target, "SR011", pack_bizrules=brs) == []
 
@@ -142,13 +142,13 @@ def test_sr060_real_pack_update_document_process_silent() -> None:
     ``TRIGGER_TYPE=13`` with an empty ``TRIGGER_OBJECT``. Type 13
     doesn't require an object, so SR060 must stay silent.
     """
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack.xml"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample.pack"))
     target = next(b for b in brs if b.name == "UPDATE_DOCUMENT_PROCESS")
     assert _findings(target, "SR060", pack_bizrules=brs) == []
 
 
 def test_sr060_real_pack2_well_formed_silent() -> None:
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2.xml"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2"))
     for target in brs:
         assert _findings(target, "SR060", pack_bizrules=brs) == []
 
@@ -281,7 +281,7 @@ def test_sr061_real_pack_silent() -> None:
     """Pack 1: rule has only a type-13 trigger, no type-60 → SR061
     has nothing to say.
     """
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack.xml"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample.pack"))
     for target in brs:
         assert _findings(target, "SR061", pack_bizrules=brs) == []
 
@@ -290,7 +290,7 @@ def test_sr061_real_pack2_intra_resolution_silent() -> None:
     """Pack 2: every BizRule has a type-60 trigger self-referencing
     its own RULE_CODE → invariant satisfied.
     """
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2.xml"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2"))
     for target in brs:
         assert _findings(target, "SR061", pack_bizrules=brs) == []
 
@@ -337,7 +337,7 @@ def test_sr062_real_pack_silent() -> None:
     """Both packs use TRIGGER_TYPE values inside the schema enum
     (13 and 60); SR062 must stay silent on production data.
     """
-    for pack in ("sample.pack.xml", "sample.pack2.xml"):
+    for pack in ("sample.pack", "sample.pack2"):
         brs = extract_bizrules(str(REPO_ROOT / pack))
         for target in brs:
             assert _findings(target, "SR062", pack_bizrules=brs) == []
@@ -416,11 +416,11 @@ def test_sr002_minimum_length_silent() -> None:
 
 def test_sr002_real_pack_silent() -> None:
     """Both production packs use compliant RULE_CODEs
-    (``UPDATE_DOCUMENT_PROCESS`` in sample.pack.xml,
+    (``UPDATE_DOCUMENT_PROCESS`` in sample.pack,
     ``COMPUTE_TEMPLATE_ORDER`` and ``COMPUTE_START_WORKFLOW`` in
-    sample.pack2.xml). SR002 must stay silent on real data.
+    sample.pack2). SR002 must stay silent on real data.
     """
-    for pack in ("sample.pack.xml", "sample.pack2.xml"):
+    for pack in ("sample.pack", "sample.pack2"):
         brs = extract_bizrules(str(REPO_ROOT / pack))
         for target in brs:
             assert _findings(target, "SR002", pack_bizrules=brs) == []
