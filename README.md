@@ -87,7 +87,7 @@ impress-reviewer/
 │   ├── integrations/                # Bitbucket REST integration
 │   └── reporters/                   # Console, JSON, HTML, Markdown outputs
 ├── tests/                           # Unit tests and fixtures
-└── sample.pack, sample.pack2        # Example pack files for local testing
+└── sample.pack, sample2.pack        # Example pack files for local testing
 ```
 
 ## Author

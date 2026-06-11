@@ -148,7 +148,7 @@ def test_sr060_real_pack_update_document_process_silent() -> None:
 
 
 def test_sr060_real_pack2_well_formed_silent() -> None:
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample2.pack"))
     for target in brs:
         assert _findings(target, "SR060", pack_bizrules=brs) == []
 
@@ -290,7 +290,7 @@ def test_sr061_real_pack2_intra_resolution_silent() -> None:
     """Pack 2: every BizRule has a type-60 trigger self-referencing
     its own RULE_CODE → invariant satisfied.
     """
-    brs = extract_bizrules(str(REPO_ROOT / "sample.pack2"))
+    brs = extract_bizrules(str(REPO_ROOT / "sample2.pack"))
     for target in brs:
         assert _findings(target, "SR061", pack_bizrules=brs) == []
 
@@ -337,7 +337,7 @@ def test_sr062_real_pack_silent() -> None:
     """Both packs use TRIGGER_TYPE values inside the schema enum
     (13 and 60); SR062 must stay silent on production data.
     """
-    for pack in ("sample.pack", "sample.pack2"):
+    for pack in ("sample.pack", "sample2.pack"):
         brs = extract_bizrules(str(REPO_ROOT / pack))
         for target in brs:
             assert _findings(target, "SR062", pack_bizrules=brs) == []
@@ -418,9 +418,9 @@ def test_sr002_real_pack_silent() -> None:
     """Both production packs use compliant RULE_CODEs
     (``UPDATE_DOCUMENT_PROCESS`` in sample.pack,
     ``COMPUTE_TEMPLATE_ORDER`` and ``COMPUTE_START_WORKFLOW`` in
-    sample.pack2). SR002 must stay silent on real data.
+    sample2.pack). SR002 must stay silent on real data.
     """
-    for pack in ("sample.pack", "sample.pack2"):
+    for pack in ("sample.pack", "sample2.pack"):
         brs = extract_bizrules(str(REPO_ROOT / pack))
         for target in brs:
             assert _findings(target, "SR002", pack_bizrules=brs) == []

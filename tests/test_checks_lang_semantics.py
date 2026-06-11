@@ -123,7 +123,7 @@ def test_sr059_method_call_receiver_counts_as_read() -> None:
 # ── SR059 Real-pack regression ─────────────────────────────────────
 #
 # These two fixtures are real BizRule scripts copied from
-# ``sample.pack`` / ``sample.pack2``. Their SR059 findings are
+# ``sample.pack`` / ``sample2.pack``. Their SR059 findings are
 # documented here so any future change that alters the read/assignment
 # walker is caught by an obvious diff in expected output.
 
@@ -155,7 +155,7 @@ def test_sr059_real_pack_update_document_process() -> None:
 
 
 def test_sr059_real_pack_compute_template_order() -> None:
-    """``compute_template_order.smartrule`` (sample.pack2).
+    """``compute_template_order.smartrule`` (sample2.pack).
 
     Documented findings: seven unused locals. Notably ``reportDefId``
     is flagged because the only "read" site is itself an assignment
