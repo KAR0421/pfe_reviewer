@@ -1,10 +1,12 @@
 """Discover the database schema: list tables/views accessible to SMART user."""
+import os
+
 import oracledb
 
 connection = oracledb.connect(
-    user="SMART",
-    password="SMART",
-    dsn="nximpress-refprod-KAR-PFE:1521/SMART",
+    user=os.environ.get("REVIEWER_DB_USER", "SMART"),
+    password=os.environ.get("REVIEWER_DB_PASSWORD", "SMART"),
+    dsn=os.environ.get("REVIEWER_DB_DSN", "nximpress-refprod-KAR-PFE:1521/SMART"),
 )
 cursor = connection.cursor()
 
