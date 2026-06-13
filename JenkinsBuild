@@ -1,0 +1,17 @@
+pipeline {
+  agent {
+    docker {
+      image 'artifacts.my-nx.com/nx-impress-docker-dev-internal/feature/reviewer-agent/impress-rr-build-agent:1.0.4'
+      label 'generic'
+    }
+  }
+  stages {
+    stage('Probe') {
+      steps {
+        sh 'python --version'
+        sh 'git --version'
+        sh 'whoami'
+      }
+    }
+  }
+}
